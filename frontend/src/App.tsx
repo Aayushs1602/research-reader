@@ -23,6 +23,7 @@ import {
 
 import { useAuth } from './context/AuthContext';
 import { AuthModal } from './components/Auth/AuthModal';
+import { AdminModal } from './components/Admin/AdminModal';
 import { Header } from './components/Header';
 import { PdfViewer } from './components/PdfViewer/PdfViewer';
 import { SearchBar } from './components/PdfViewer/SearchBar';
@@ -33,6 +34,7 @@ import { BookOpen, UploadCloud, Loader2 } from 'lucide-react';
 export function App() {
   const { user, isLoading: authLoading } = useAuth();
   const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [adminModalOpen, setAdminModalOpen] = useState(false);
 
   const [documents, setDocuments] = useState<DocumentMeta[]>([]);
   const [currentDocId, setCurrentDocId] = useState<string | null>(null);
@@ -359,6 +361,7 @@ export function App() {
         onToggleSearch={() => setIsSearching((prev) => !prev)}
         onOpenLibrary={() => setLibraryOpen(true)}
         onOpenAuth={() => setAuthModalOpen(true)}
+        onOpenAdmin={() => setAdminModalOpen(true)}
       />
 
       {/* Main Reading Canvas & Split Sidebar */}
@@ -478,6 +481,12 @@ export function App() {
         isOpen={!user || authModalOpen}
         canClose={Boolean(user)}
         onClose={() => setAuthModalOpen(false)}
+      />
+
+      {/* Database & RAG Admin Modal */}
+      <AdminModal
+        isOpen={adminModalOpen}
+        onClose={() => setAdminModalOpen(false)}
       />
     </div>
   );

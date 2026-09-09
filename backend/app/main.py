@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from app.core.config import CORS_ORIGINS
 from app.database.session import Base, engine
-from app.api import documents, annotations, notes, ai, auth
+from app.api import documents, annotations, notes, ai, auth, admin
 
 # Ensure database tables exist
 Base.metadata.create_all(bind=engine)
@@ -37,6 +37,7 @@ app.include_router(documents.router)
 app.include_router(annotations.router)
 app.include_router(notes.router)
 app.include_router(ai.router)
+app.include_router(admin.router)
 
 @app.get("/")
 def root():

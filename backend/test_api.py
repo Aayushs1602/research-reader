@@ -108,8 +108,81 @@ def test_pdf_upload_and_annotations():
     assert del_ann_res.status_code == 204
     print("[PASS] Delete annotation")
 
+def test_admin_and_rag():
+    # Login as test user
+    login_res = client.post("/api/auth/login", json={"email": "tester@test.com", "password": "password123"})
+    if login_res.status_code != 200:
+        signup_res = client.post("/api/auth/signup", json={"email": "tester@test.com", "username": "Tester", "password": "password123"})
+        token = signup_res.json()["access_token"]
+    else:
+        token = login_res.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # 1. Admin Health
+    health_res = client.get("/api/admin/health", headers=headers)
+    assert health_res.status_code == 200
+    data = health_res.json()
+    assert data["status"] == "healthy"
+    assert data["database_connected"] is True
+    assert "users" in data["table_counts"]
+    assert "document_chunks" in data["table_counts"]
+    print(f"[PASS] Admin Health check (latency: {data['latency_ms']}ms, dialect: {data['database_info']['dialect']})")
+
+    # 2. Table Explorer
+    table_res = client.get("/api/admin/tables/users", headers=headers)
+    assert table_res.status_code == 200
+    assert len(table_res.json()["rows"]) >= 1
+    print("[PASS] Admin Table Explorer (users table)")
+
+    # 3. RAG Documents
+    rag_docs_res = client.get("/api/admin/rag/documents", headers=headers)
+    assert rag_docs_res.status_code == 200
+    docs = rag_docs_res.json()
+    assert len(docs) >= 1
+    doc_id = docs[0]["id"]
+    print(f"[PASS] Admin RAG documents list ({len(docs)} documents)")
+
+    # 4. Chunk Document
+    chunk_res = client.post(f"/api/admin/rag/chunk/{doc_id}?target_words=100&overlap_words=20", headers=headers)
+    assert chunk_res.status_code == 200
+    chunk_summary = chunk_res.json()
+    print(f"[PASS] Admin RAG chunking endpoint (pages processed: {chunk_summary['pages_processed']})")
+
+    # Seed a test chunk if document was mock/text-less
+    from app.database.models import DocumentChunk
+    from app.database.session import SessionLocal
+    db = SessionLocal()
+    try:
+        sample_chunk = DocumentChunk(
+            document_id=doc_id,
+            chunk_index=0,
+            page_number=1,
+            content="Attention mechanisms and transformer neural networks enable sequence-to-sequence modeling.",
+            token_count=14,
+        )
+        db.add(sample_chunk)
+        db.commit()
+    finally:
+        db.close()
+
+    # 5. Fetch Document Chunks
+    chunks_res = client.get(f"/api/admin/rag/chunks/{doc_id}", headers=headers)
+    assert chunks_res.status_code == 200
+    chunks = chunks_res.json()
+    assert len(chunks) >= 1
+    assert "content" in chunks[0]
+    print(f"[PASS] Admin RAG fetch chunks ({len(chunks)} chunks retrieved)")
+
+    # 6. Test RAG Search
+    search_res = client.post("/api/admin/rag/test-search", json={"query": "attention neural networks", "document_id": doc_id}, headers=headers)
+    assert search_res.status_code == 200
+    search_data = search_res.json()
+    assert len(search_data["results"]) >= 1
+    print(f"[PASS] Admin RAG search testbed (query: '{search_data['query']}', top matches: {len(search_data['results'])})")
+
 if __name__ == "__main__":
     test_health()
     test_ai_deep_dive()
     test_pdf_upload_and_annotations()
+    test_admin_and_rag()
     print("\nALL BACKEND API TESTS PASSED SUCCESSFULLY!")
