@@ -7,7 +7,8 @@ import type {
   AuthResponse
 } from '../types';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const rawApiBase = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_BASE = rawApiBase.replace(/\/+$/, '');
 
 const TOKEN_KEY = 'research_reader_auth_token';
 
