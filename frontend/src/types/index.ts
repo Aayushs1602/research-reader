@@ -49,6 +49,7 @@ export type ReadingTheme = 'light' | 'sepia' | 'dark';
 export interface SearchMatch {
   pageNumber: number;
   matchIndex: number;
+  globalIndex?: number;
   contextText: string;
 }
 

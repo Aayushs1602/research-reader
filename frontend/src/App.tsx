@@ -6,6 +6,7 @@ import type {
   ReadingTheme,
   TOCItem,
   NormalizedRect,
+  SearchMatch,
 } from './types';
 import {
   getDocuments,
@@ -55,6 +56,8 @@ export function App() {
   const [aiQuery, setAiQuery] = useState('');
   const [targetPageJump, setTargetPageJump] = useState<number | null>(null);
   const [activePdfDoc, setActivePdfDoc] = useState<PDFDocumentProxy | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeSearchMatch, setActiveSearchMatch] = useState<SearchMatch | null>(null);
 
   const currentDoc = useMemo(
     () => documents.find((d) => d.id === currentDocId) || null,
@@ -214,6 +217,19 @@ export function App() {
     }, 1500);
   };
 
+  // In-document search state change handler
+  const handleSearchChange = useCallback(
+    (data: {
+      query: string;
+      currentMatch: SearchMatch | null;
+      totalMatches: number;
+    }) => {
+      setSearchQuery(data.query);
+      setActiveSearchMatch(data.currentMatch);
+    },
+    []
+  );
+
   // When clicking a highlight directly on the PDF
   const handleSelectAnnotationOnPdf = (annotationId: string) => {
     setActiveAnnotationId(annotationId);
@@ -370,6 +386,8 @@ export function App() {
               onDocLoaded={setActivePdfDoc}
               targetPageJump={targetPageJump}
               onClearPageJump={() => setTargetPageJump(null)}
+              searchQuery={searchQuery}
+              activeSearchMatch={activeSearchMatch}
             />
 
             {/* Split Screen Sidebar */}
@@ -428,8 +446,13 @@ export function App() {
       <SearchBar
         pdfDoc={activePdfDoc}
         isOpen={isSearching}
-        onClose={() => setIsSearching(false)}
+        onClose={() => {
+          setIsSearching(false);
+          setSearchQuery('');
+          setActiveSearchMatch(null);
+        }}
         onJumpToPage={handleJumpToPage}
+        onSearchChange={handleSearchChange}
       />
 
       {/* Library & Upload Modal */}

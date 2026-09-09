@@ -8,6 +8,11 @@ interface SearchBarProps {
   isOpen: boolean;
   onClose: () => void;
   onJumpToPage: (pageNumber: number) => void;
+  onSearchChange?: (data: {
+    query: string;
+    currentMatch: SearchMatch | null;
+    totalMatches: number;
+  }) => void;
 }
 
 export const SearchBar: React.FC<SearchBarProps> = ({
@@ -15,51 +20,76 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   isOpen,
   onClose,
   onJumpToPage,
+  onSearchChange,
 }) => {
   const [query, setQuery] = useState('');
   const [matches, setMatches] = useState<SearchMatch[]>([]);
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
   const [isSearching, setIsSearching] = useState(false);
+  const pageTextsCache = React.useRef<Map<number, string>>(new Map());
+
+  // Clear cache when document changes
+  useEffect(() => {
+    pageTextsCache.current.clear();
+  }, [pdfDoc]);
 
   useEffect(() => {
     if (!isOpen) {
       setQuery('');
       setMatches([]);
       setCurrentMatchIndex(0);
+      onSearchChange?.({ query: '', currentMatch: null, totalMatches: 0 });
     }
   }, [isOpen]);
 
   const handleSearch = async (searchTerm: string) => {
-    if (!pdfDoc || !searchTerm.trim()) {
+    const term = searchTerm.trim().toLowerCase();
+    if (!pdfDoc || term.length < 2) {
       setMatches([]);
       setCurrentMatchIndex(0);
+      onSearchChange?.({ query: '', currentMatch: null, totalMatches: 0 });
       return;
     }
 
     setIsSearching(true);
     const foundMatches: SearchMatch[] = [];
-    const term = searchTerm.toLowerCase();
 
     try {
       const numPages = pdfDoc.numPages;
-      for (let i = 1; i <= numPages; i++) {
-        const page = await pdfDoc.getPage(i);
-        const textContent = await page.getTextContent();
-        const pageText = textContent.items
-          .map((item: any) => item.str)
-          .join(' ')
-          .toLowerCase();
+      let globalIdx = 0;
 
+      for (let i = 1; i <= numPages; i++) {
+        let pageText = pageTextsCache.current.get(i);
+        if (!pageText) {
+          const page = await pdfDoc.getPage(i);
+          const textContent = await page.getTextContent();
+          pageText = '';
+          for (let j = 0; j < textContent.items.length; j++) {
+            const item = textContent.items[j] as any;
+            const str = item.str || '';
+            if (!str) continue;
+            if (pageText.length > 0 && !pageText.endsWith(' ') && !str.startsWith(' ')) {
+              pageText += ' ' + str;
+            } else {
+              pageText += str;
+            }
+          }
+          pageTextsCache.current.set(i, pageText);
+        }
+
+        const lowerPage = pageText.toLowerCase();
         let startIndex = 0;
-        let matchIdx = 0;
-        while ((startIndex = pageText.indexOf(term, startIndex)) !== -1) {
+        let matchIdxOnPage = 0;
+
+        while ((startIndex = lowerPage.indexOf(term, startIndex)) !== -1) {
           const contextStart = Math.max(0, startIndex - 20);
           const contextEnd = Math.min(pageText.length, startIndex + term.length + 30);
           const snippet = pageText.substring(contextStart, contextEnd);
 
           foundMatches.push({
             pageNumber: i,
-            matchIndex: matchIdx++,
+            matchIndex: matchIdxOnPage++,
+            globalIndex: globalIdx++,
             contextText: snippet,
           });
           startIndex += term.length;
@@ -68,8 +98,20 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
       setMatches(foundMatches);
       setCurrentMatchIndex(0);
+
       if (foundMatches.length > 0) {
+        onSearchChange?.({
+          query: searchTerm,
+          currentMatch: foundMatches[0],
+          totalMatches: foundMatches.length,
+        });
         onJumpToPage(foundMatches[0].pageNumber);
+      } else {
+        onSearchChange?.({
+          query: searchTerm,
+          currentMatch: null,
+          totalMatches: 0,
+        });
       }
     } catch (err) {
       console.error('Error executing search:', err);
@@ -82,14 +124,26 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     if (matches.length === 0) return;
     const nextIdx = (currentMatchIndex + 1) % matches.length;
     setCurrentMatchIndex(nextIdx);
-    onJumpToPage(matches[nextIdx].pageNumber);
+    const match = matches[nextIdx];
+    onSearchChange?.({
+      query,
+      currentMatch: match,
+      totalMatches: matches.length,
+    });
+    onJumpToPage(match.pageNumber);
   };
 
   const handlePrev = () => {
     if (matches.length === 0) return;
     const prevIdx = (currentMatchIndex - 1 + matches.length) % matches.length;
     setCurrentMatchIndex(prevIdx);
-    onJumpToPage(matches[prevIdx].pageNumber);
+    const match = matches[prevIdx];
+    onSearchChange?.({
+      query,
+      currentMatch: match,
+      totalMatches: matches.length,
+    });
+    onJumpToPage(match.pageNumber);
   };
 
   if (!isOpen) return null;
@@ -102,11 +156,14 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         type="text"
         value={query}
         onChange={(e) => {
-          setQuery(e.target.value);
-          if (e.target.value.length >= 3) {
-            handleSearch(e.target.value);
+          const val = e.target.value;
+          setQuery(val);
+          if (val.trim().length >= 2) {
+            handleSearch(val);
           } else {
             setMatches([]);
+            setCurrentMatchIndex(0);
+            onSearchChange?.({ query: '', currentMatch: null, totalMatches: 0 });
           }
         }}
         onKeyDown={(e) => {
@@ -127,7 +184,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         <span className="text-[11px] font-mono text-gray-500 dark:text-gray-400 whitespace-nowrap">
           {currentMatchIndex + 1} of {matches.length}
         </span>
-      ) : query.length >= 3 ? (
+      ) : query.trim().length >= 2 ? (
         <span className="text-[11px] text-gray-400 whitespace-nowrap">0 results</span>
       ) : null}
 
