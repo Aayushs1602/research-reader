@@ -1,0 +1,164 @@
+import React from 'react';
+import {
+  BookOpen,
+  ZoomIn,
+  ZoomOut,
+  Search,
+  PanelRightClose,
+  PanelRightOpen,
+  FolderOpen,
+  ChevronLeft,
+  ChevronRight,
+} from 'lucide-react';
+import type { DocumentMeta, ReadingTheme } from '../types';
+import { ThemeToggle } from './common/ThemeToggle';
+
+interface HeaderProps {
+  currentDoc: DocumentMeta | null;
+  currentPage: number;
+  totalPages: number;
+  zoom: number;
+  theme: ReadingTheme;
+  sidebarOpen: boolean;
+  isSearching: boolean;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onZoomReset: () => void;
+  onPageChange: (page: number) => void;
+  onThemeChange: (theme: ReadingTheme) => void;
+  onToggleSidebar: () => void;
+  onToggleSearch: () => void;
+  onOpenLibrary: () => void;
+}
+
+export const Header: React.FC<HeaderProps> = ({
+  currentDoc,
+  currentPage,
+  totalPages,
+  zoom,
+  theme,
+  sidebarOpen,
+  isSearching,
+  onZoomIn,
+  onZoomOut,
+  onZoomReset,
+  onPageChange,
+  onThemeChange,
+  onToggleSidebar,
+  onToggleSearch,
+  onOpenLibrary,
+}) => {
+  return (
+    <header className="h-14 border-b flex items-center justify-between px-4 z-20 select-none bg-white/80 dark:bg-gray-900/80 backdrop-blur border-gray-200 dark:border-gray-800">
+      {/* Left: App Logo & Library trigger */}
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 font-bold text-lg text-indigo-600 dark:text-indigo-400">
+          <BookOpen className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
+          <span className="hidden md:inline font-extrabold tracking-tight">ResearchReader</span>
+        </div>
+
+        <button
+          onClick={onOpenLibrary}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 dark:bg-gray-800 hover:bg-indigo-50 dark:hover:bg-indigo-950 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 transition"
+          title="Switch paper or upload new PDF"
+        >
+          <FolderOpen className="w-4 h-4 text-indigo-500" />
+          <span>Library</span>
+        </button>
+
+        {currentDoc && (
+          <div className="hidden lg:flex items-center gap-2 text-xs text-gray-500 max-w-xs truncate" title={currentDoc.original_name}>
+            <span className="text-gray-300 dark:text-gray-600">|</span>
+            <span className="truncate font-medium text-gray-800 dark:text-gray-200">{currentDoc.original_name}</span>
+            <span className="px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 font-mono text-[10px]">
+              {Math.round(currentDoc.progress_percent)}% read
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Middle: Page & Zoom Controls */}
+      <div className="flex items-center gap-2">
+        {/* Page navigation */}
+        {totalPages > 0 && (
+          <div className="flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5 border border-gray-200 dark:border-gray-700">
+            <button
+              onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+              disabled={currentPage <= 1}
+              className="p-1 rounded hover:bg-white dark:hover:bg-gray-700 disabled:opacity-30 transition"
+              title="Previous Page"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <div className="px-2 text-xs font-medium font-mono text-gray-700 dark:text-gray-300">
+              {currentPage} / {totalPages}
+            </div>
+            <button
+              onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+              disabled={currentPage >= totalPages}
+              className="p-1 rounded hover:bg-white dark:hover:bg-gray-700 disabled:opacity-30 transition"
+              title="Next Page"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {/* Zoom controls */}
+        <div className="hidden sm:flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5 border border-gray-200 dark:border-gray-700">
+          <button
+            onClick={onZoomOut}
+            className="p-1.5 rounded hover:bg-white dark:hover:bg-gray-700 transition"
+            title="Zoom Out"
+          >
+            <ZoomOut className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={onZoomReset}
+            className="px-2 text-xs font-mono font-medium hover:text-indigo-600 dark:hover:text-indigo-400 transition"
+            title="Reset Zoom"
+          >
+            {Math.round(zoom * 100)}%
+          </button>
+          <button
+            onClick={onZoomIn}
+            className="p-1.5 rounded hover:bg-white dark:hover:bg-gray-700 transition"
+            title="Zoom In"
+          >
+            <ZoomIn className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* Search button */}
+        <button
+          onClick={onToggleSearch}
+          className={`p-2 rounded-lg border transition ${
+            isSearching
+              ? 'bg-indigo-50 border-indigo-300 text-indigo-600 dark:bg-indigo-950 dark:border-indigo-700 dark:text-indigo-300'
+              : 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+          }`}
+          title="Search in PDF (Ctrl+F)"
+        >
+          <Search className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Right: Reading Ergonomics Themes & Split Sidebar Toggle */}
+      <div className="flex items-center gap-2">
+        <ThemeToggle theme={theme} onChange={onThemeChange} />
+
+        <button
+          onClick={onToggleSidebar}
+          className={`p-2 rounded-lg border transition ${
+            sidebarOpen
+              ? 'bg-indigo-600 text-white border-indigo-600'
+              : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:bg-gray-200 dark:hover:bg-gray-700'
+          }`}
+          title={sidebarOpen ? 'Collapse Notepad & Annotations' : 'Open Notepad & Annotations'}
+        >
+          {sidebarOpen ? <PanelRightClose className="w-4 h-4" /> : <PanelRightOpen className="w-4 h-4" />}
+        </button>
+      </div>
+    </header>
+  );
+};
