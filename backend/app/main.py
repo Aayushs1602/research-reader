@@ -8,12 +8,13 @@ from app.api import documents, annotations, notes, ai, auth
 # Ensure database tables exist
 Base.metadata.create_all(bind=engine)
 
-# Auto-migrate: check if user_id exists in documents table
-with engine.connect() as conn:
-    cols = [r[1] for r in conn.execute(text("PRAGMA table_info(documents)")).fetchall()]
-    if cols and "user_id" not in cols:
-        conn.execute(text("ALTER TABLE documents ADD COLUMN user_id TEXT REFERENCES users(id)"))
-        conn.commit()
+# Auto-migrate: check if user_id exists in documents table (SQLite backward compatibility)
+if engine.dialect.name == "sqlite":
+    with engine.connect() as conn:
+        cols = [r[1] for r in conn.execute(text("PRAGMA table_info(documents)")).fetchall()]
+        if cols and "user_id" not in cols:
+            conn.execute(text("ALTER TABLE documents ADD COLUMN user_id TEXT REFERENCES users(id)"))
+            conn.commit()
 
 app = FastAPI(
     title="Research Reader API",
