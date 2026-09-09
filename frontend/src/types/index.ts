@@ -27,6 +27,8 @@ export interface DocumentMeta {
   page_count: number;
   last_page: number;
   progress_percent: number;
+  chunk_count?: number;
+  is_chunked?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -64,7 +66,26 @@ export interface User {
   id: string;
   email: string;
   username: string;
+  is_admin?: boolean;
   created_at: string;
+}
+
+export interface DocumentChunk {
+  id: string;
+  document_id: string;
+  chunk_index: number;
+  page_number: number;
+  content: string;
+  token_count: number;
+  created_at: string;
+}
+
+export interface ChunkSummary {
+  document_id: string;
+  document_name: string;
+  pages_processed: number;
+  chunks_generated: number;
+  total_tokens_estimated: number;
 }
 
 export interface AuthResponse {

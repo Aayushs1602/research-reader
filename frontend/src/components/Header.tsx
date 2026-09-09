@@ -12,6 +12,7 @@ import {
   LogOut,
   User as UserIcon,
   ChevronDown,
+  Database,
 } from 'lucide-react';
 import type { DocumentMeta, ReadingTheme } from '../types';
 import { ThemeToggle } from './common/ThemeToggle';
@@ -34,6 +35,7 @@ interface HeaderProps {
   onToggleSearch: () => void;
   onOpenLibrary: () => void;
   onOpenAuth: () => void;
+  onOpenAdmin: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -53,6 +55,7 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleSearch,
   onOpenLibrary,
   onOpenAuth,
+  onOpenAdmin,
 }) => {
   const { user, logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -165,6 +168,18 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Right: Reading Ergonomics Themes, Split Sidebar & User Profile */}
       <div className="flex items-center gap-2">
+        {/* Admin Dashboard Trigger - Only for Admins */}
+        {user?.is_admin && (
+          <button
+            onClick={onOpenAdmin}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 transition"
+            title="Database & AI RAG Admin Hub (Admin Only)"
+          >
+            <Database className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+            <span className="hidden sm:inline">Admin Hub</span>
+          </button>
+        )}
+
         <ThemeToggle theme={theme} onChange={onThemeChange} />
 
         <button
@@ -199,9 +214,28 @@ export const Header: React.FC<HeaderProps> = ({
             {menuOpen && (
               <div className="absolute right-0 mt-2 w-52 bg-white dark:bg-gray-900 rounded-xl shadow-xl border border-gray-200 dark:border-gray-800 p-2 z-50 animate-in fade-in duration-100">
                 <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-800">
-                  <p className="text-xs font-bold text-gray-900 dark:text-gray-100 truncate">{user.username}</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-bold text-gray-900 dark:text-gray-100 truncate">{user.username}</p>
+                    {user.is_admin && (
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
+                        ADMIN
+                      </span>
+                    )}
+                  </div>
                   <p className="text-[11px] text-gray-400 truncate">{user.email}</p>
                 </div>
+                {user.is_admin && (
+                  <button
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onOpenAdmin();
+                    }}
+                    className="w-full text-left px-3 py-2 text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg flex items-center gap-2 transition mt-1"
+                  >
+                    <Database className="w-3.5 h-3.5 text-emerald-500" />
+                    <span>Admin & RAG Hub</span>
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     setMenuOpen(false);

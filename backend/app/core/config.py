@@ -25,6 +25,10 @@ SECRET_KEY = os.getenv("SECRET_KEY", "research-reader-secret-key-super-secure-ch
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
 
+# Admin authorization
+_raw_admin_emails = os.getenv("ADMIN_EMAILS", "")
+ADMIN_EMAILS = {e.strip().lower() for e in _raw_admin_emails.split(",") if e.strip()}
+
 CORS_ORIGINS = [
     "https://research-reader-psi.vercel.app",
     "http://localhost:5173",

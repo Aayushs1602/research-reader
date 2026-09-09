@@ -20,6 +20,7 @@ class UserResponse(BaseModel):
     id: str
     email: str
     username: str
+    is_admin: bool = False
     created_at: datetime
 
     class Config:
@@ -48,11 +49,33 @@ class DocumentResponse(BaseModel):
     page_count: int
     last_page: int
     progress_percent: float
+    chunk_count: int = 0
+    is_chunked: bool = False
     created_at: datetime
     updated_at: datetime
 
     class Config:
         from_attributes = True
+
+# --- Chunk Schemas ---
+class DocumentChunkResponse(BaseModel):
+    id: str
+    document_id: str
+    chunk_index: int
+    page_number: int
+    content: str
+    token_count: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class ChunkSummaryResponse(BaseModel):
+    document_id: str
+    document_name: str
+    pages_processed: int
+    chunks_generated: int
+    total_tokens_estimated: int
 
 # --- Annotation Schemas ---
 class AnnotationCreate(BaseModel):

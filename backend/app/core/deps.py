@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.database.session import get_db
 from app.database.models import User
 from app.core.security import decode_access_token
+from app.core.config import ADMIN_EMAILS
 
 security = HTTPBearer(auto_error=False)
 
@@ -37,3 +38,24 @@ def get_current_user(
         )
 
     return user
+
+def is_user_admin(user: User, db: Session = None) -> bool:
+    """Returns True if user has is_admin=True or user's email is listed in ADMIN_EMAILS."""
+    if getattr(user, "is_admin", False):
+        return True
+    if ADMIN_EMAILS and user.email.lower() in ADMIN_EMAILS:
+        return True
+    return False
+
+def require_admin(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> User:
+    """Ensures the authenticated user has administrative privileges, else 403 Forbidden."""
+    if not is_user_admin(current_user, db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: Administrative privileges required to access this resource."
+        )
+    return current_user
+

@@ -123,6 +123,38 @@ def test_auth_and_user_isolation():
     assert bob_get_alice_anns.status_code == 404
     print("[PASS] Isolation: Bob cannot access Alice's annotations (404)")
 
+    # 12. User Isolation & Chunking: Alice can chunk her own document
+    alice_chunk_res = client.post(f"/api/documents/{alice_doc_id}/chunk", headers=alice_headers)
+    assert alice_chunk_res.status_code == 200
+    print("[PASS] User chunking: Alice can chunk her own document")
+
+    # 13. User Isolation & Chunking: Bob cannot chunk or view Alice's document chunks
+    bob_chunk_alice = client.post(f"/api/documents/{alice_doc_id}/chunk", headers=bob_headers)
+    assert bob_chunk_alice.status_code == 404
+    bob_get_chunks = client.get(f"/api/documents/{alice_doc_id}/chunks", headers=bob_headers)
+    assert bob_get_chunks.status_code == 404
+    print("[PASS] Isolation: Bob cannot chunk or view Alice's chunks (404)")
+
+    # 14. Admin Privilege: Bob (regular user) gets 403 on /api/admin/health
+    bob_admin_res = client.get("/api/admin/health", headers=bob_headers)
+    assert bob_admin_res.status_code == 403
+    print("[PASS] Security: Non-admin user receives 403 Forbidden on /api/admin/health")
+
+    # 15. Admin Privilege: Designated Admin gets 200 on /api/admin/health
+    from app.database.session import SessionLocal
+    from app.database.models import User
+    db = SessionLocal()
+    try:
+        alice_db = db.query(User).filter(User.id == alice_data["user"]["id"]).first()
+        alice_db.is_admin = True
+        db.commit()
+    finally:
+        db.close()
+
+    alice_admin_res = client.get("/api/admin/health", headers=alice_headers)
+    assert alice_admin_res.status_code == 200
+    print("[PASS] Security: Admin user receives 200 OK on /api/admin/health")
+
     print("\nALL MULTI-USER & AUTH INTEGRATION TESTS PASSED SUCCESSFULLY!")
 
 if __name__ == "__main__":

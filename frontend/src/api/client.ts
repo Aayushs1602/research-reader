@@ -209,3 +209,123 @@ export async function fetchAIDeepDive(selectedText: string, mode = 'explain'): P
   if (!res.ok) throw new Error('Failed to run AI deep dive');
   return res.json();
 }
+
+// --- Admin & AI RAG Endpoints ---
+
+export async function getAdminHealth(): Promise<any> {
+  const res = await fetch(`${API_BASE}/api/admin/health`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch admin health');
+  return res.json();
+}
+
+export async function getAdminTableRecords(
+  tableName: string,
+  page = 1,
+  limit = 25,
+  search = ''
+): Promise<any> {
+  const params = new URLSearchParams({
+    page: String(page),
+    limit: String(limit),
+  });
+  if (search) params.append('search', search);
+
+  const res = await fetch(`${API_BASE}/api/admin/tables/${tableName}?${params.toString()}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error(`Failed to fetch table records for ${tableName}`);
+  return res.json();
+}
+
+export async function getAdminRagDocuments(): Promise<any[]> {
+  const res = await fetch(`${API_BASE}/api/admin/rag/documents`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch RAG documents status');
+  return res.json();
+}
+
+export async function triggerDocumentChunking(
+  docId: string,
+  targetWords = 150,
+  overlapWords = 30
+): Promise<any> {
+  const params = new URLSearchParams({
+    target_words: String(targetWords),
+    overlap_words: String(overlapWords),
+  });
+
+  const res = await fetch(`${API_BASE}/api/admin/rag/chunk/${docId}?${params.toString()}`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to trigger chunking');
+  return res.json();
+}
+
+export async function getAdminDocumentChunks(docId: string): Promise<any[]> {
+  const res = await fetch(`${API_BASE}/api/admin/rag/chunks/${docId}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch document chunks');
+  return res.json();
+}
+
+export async function testRagSearch(
+  query: string,
+  documentId?: string,
+  topK = 5
+): Promise<any> {
+  const res = await fetch(`${API_BASE}/api/admin/rag/test-search`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ query, document_id: documentId, top_k: topK }),
+  });
+  if (!res.ok) throw new Error('Failed to run RAG search test');
+  return res.json();
+}
+
+// --- User-Level Document Chunking & Search ---
+
+export async function chunkUserDocument(
+  docId: string,
+  targetWords = 150,
+  overlapWords = 30
+): Promise<any> {
+  const params = new URLSearchParams({
+    target_words: String(targetWords),
+    overlap_words: String(overlapWords),
+  });
+
+  const res = await fetch(`${API_BASE}/api/documents/${docId}/chunk?${params.toString()}`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to process and chunk document');
+  return res.json();
+}
+
+export async function getUserDocumentChunks(docId: string): Promise<any[]> {
+  const res = await fetch(`${API_BASE}/api/documents/${docId}/chunks`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch document chunks');
+  return res.json();
+}
+
+export async function searchUserDocumentChunks(
+  docId: string,
+  query: string,
+  topK = 5
+): Promise<any> {
+  const res = await fetch(`${API_BASE}/api/documents/${docId}/rag-search`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ query, top_k: topK }),
+  });
+  if (!res.ok) throw new Error('Failed to search document chunks');
+  return res.json();
+}
+
