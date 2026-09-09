@@ -11,7 +11,7 @@ import {
   getDocuments,
   uploadDocument,
   deleteDocument,
-  getDocumentFileUrl,
+  fetchDocumentFileBlob,
   updateProgress,
   getAnnotations,
   createAnnotation,
@@ -20,6 +20,8 @@ import {
   updateDocumentNotes,
 } from './api/client';
 
+import { useAuth } from './context/AuthContext';
+import { AuthModal } from './components/Auth/AuthModal';
 import { Header } from './components/Header';
 import { PdfViewer } from './components/PdfViewer/PdfViewer';
 import { SearchBar } from './components/PdfViewer/SearchBar';
@@ -28,9 +30,13 @@ import { DocumentLibraryModal } from './components/DocumentLibraryModal';
 import { BookOpen, UploadCloud, Loader2 } from 'lucide-react';
 
 export function App() {
+  const { user, isLoading: authLoading } = useAuth();
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+
   const [documents, setDocuments] = useState<DocumentMeta[]>([]);
   const [currentDocId, setCurrentDocId] = useState<string | null>(null);
-  const [loadingDocs, setLoadingDocs] = useState(true);
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
+  const [loadingDocs, setLoadingDocs] = useState(false);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -55,9 +61,19 @@ export function App() {
     [documents, currentDocId]
   );
 
-  // Load documents list on startup
+  // Load user's private documents when logged in
   useEffect(() => {
+    if (!user) {
+      setDocuments([]);
+      setCurrentDocId(null);
+      setAnnotations([]);
+      setNotesContent('');
+      setPdfBlobUrl(null);
+      return;
+    }
+
     async function loadDocs() {
+      setLoadingDocs(true);
       try {
         const docs = await getDocuments();
         setDocuments(docs);
@@ -65,6 +81,7 @@ export function App() {
           setCurrentDocId(docs[0].id);
           setCurrentPage(docs[0].last_page || 1);
         } else {
+          setCurrentDocId(null);
           setLibraryOpen(true);
         }
       } catch (err) {
@@ -73,12 +90,44 @@ export function App() {
         setLoadingDocs(false);
       }
     }
+
     loadDocs();
-  }, []);
+  }, [user]);
+
+  // When active document changes, fetch its file blob with auth header
+  useEffect(() => {
+    if (!currentDocId || !user) {
+      setPdfBlobUrl(null);
+      return;
+    }
+
+    let isCancelled = false;
+    let createdUrl: string | null = null;
+
+    async function loadPdfBlob() {
+      try {
+        const blob = await fetchDocumentFileBlob(currentDocId!);
+        if (isCancelled) return;
+        createdUrl = URL.createObjectURL(blob);
+        setPdfBlobUrl(createdUrl);
+      } catch (err) {
+        console.error('Error fetching PDF file blob:', err);
+      }
+    }
+
+    loadPdfBlob();
+
+    return () => {
+      isCancelled = true;
+      if (createdUrl) {
+        URL.revokeObjectURL(createdUrl);
+      }
+    };
+  }, [currentDocId, user]);
 
   // When active document changes, fetch its annotations and notes
   useEffect(() => {
-    if (!currentDocId) {
+    if (!currentDocId || !user) {
       setAnnotations([]);
       setNotesContent('');
       return;
@@ -118,7 +167,7 @@ export function App() {
     }
 
     loadDocDetails();
-  }, [currentDocId]);
+  }, [currentDocId, user]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -136,7 +185,7 @@ export function App() {
   const handlePageChange = useCallback(
     async (pageNum: number) => {
       setCurrentPage(pageNum);
-      if (currentDocId) {
+      if (currentDocId && user) {
         try {
           const updated = await updateProgress(currentDocId, pageNum);
           setDocuments((prev) =>
@@ -147,7 +196,7 @@ export function App() {
         }
       }
     },
-    [currentDocId]
+    [currentDocId, user]
   );
 
   // Jump to specific page
@@ -204,7 +253,6 @@ export function App() {
 
       setAnnotations((prev) => [...prev, parsed]);
 
-      // If user added a comment, show the annotations tab
       if (data.commentText) {
         setSidebarOpen(true);
         setActiveSidebarTab('annotations');
@@ -266,7 +314,14 @@ export function App() {
     }
   };
 
-  const pdfUrl = currentDocId ? getDocumentFileUrl(currentDocId) : null;
+  if (authLoading) {
+    return (
+      <div className="h-screen w-screen flex flex-col items-center justify-center gap-3 bg-gray-50 dark:bg-gray-950 text-indigo-600">
+        <Loader2 className="w-8 h-8 animate-spin" />
+        <span className="text-xs font-semibold text-gray-500">Checking authentication...</span>
+      </div>
+    );
+  }
 
   return (
     <div className={`h-screen w-screen flex flex-col overflow-hidden theme-${theme} ${theme === 'dark' ? 'dark' : ''}`}>
@@ -287,6 +342,7 @@ export function App() {
         onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
         onToggleSearch={() => setIsSearching((prev) => !prev)}
         onOpenLibrary={() => setLibraryOpen(true)}
+        onOpenAuth={() => setAuthModalOpen(true)}
       />
 
       {/* Main Reading Canvas & Split Sidebar */}
@@ -294,13 +350,13 @@ export function App() {
         {loadingDocs ? (
           <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-400">
             <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
-            <span className="text-xs font-medium">Connecting to Research Reader API...</span>
+            <span className="text-xs font-medium">Loading your documents...</span>
           </div>
-        ) : pdfUrl ? (
+        ) : pdfBlobUrl ? (
           <>
             {/* PDF Viewer */}
             <PdfViewer
-              pdfUrl={pdfUrl}
+              pdfUrl={pdfBlobUrl}
               zoom={zoom}
               theme={theme}
               annotations={annotations}
@@ -340,17 +396,30 @@ export function App() {
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-gray-500">
             <BookOpen className="w-12 h-12 text-indigo-500 mb-3" />
-            <h2 className="text-base font-bold text-gray-800 dark:text-gray-200">Welcome to Research Reader</h2>
+            <h2 className="text-base font-bold text-gray-800 dark:text-gray-200">
+              {user ? `Welcome, ${user.username}!` : 'Welcome to Research Reader'}
+            </h2>
             <p className="text-xs text-gray-500 max-w-sm mt-1 mb-4">
-              Upload any scientific publication, pre-print, or book to highlight in multi-color, take notes, and dive deep.
+              {user
+                ? 'Upload a scientific publication, pre-print, or book to start reading and taking notes.'
+                : 'Sign in to access your private library, highlights, and annotations.'}
             </p>
-            <button
-              onClick={() => setLibraryOpen(true)}
-              className="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-2 shadow-md transition"
-            >
-              <UploadCloud className="w-4 h-4" />
-              <span>Upload or Choose a PDF</span>
-            </button>
+            {user ? (
+              <button
+                onClick={() => setLibraryOpen(true)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-2 shadow-md transition"
+              >
+                <UploadCloud className="w-4 h-4" />
+                <span>Upload a PDF Paper</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => setAuthModalOpen(true)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-2 shadow-md transition"
+              >
+                <span>Sign In or Sign Up</span>
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -365,7 +434,7 @@ export function App() {
 
       {/* Library & Upload Modal */}
       <DocumentLibraryModal
-        isOpen={libraryOpen}
+        isOpen={libraryOpen && Boolean(user)}
         documents={documents}
         currentDocId={currentDocId}
         onSelectDocument={(id) => {
@@ -379,6 +448,13 @@ export function App() {
         onUploadDocument={handleUploadDocument}
         onDeleteDocument={handleDeleteDocument}
         onClose={() => setLibraryOpen(false)}
+      />
+
+      {/* Authentication Modal */}
+      <AuthModal
+        isOpen={!user || authModalOpen}
+        canClose={Boolean(user)}
+        onClose={() => setAuthModalOpen(false)}
       />
     </div>
   );
