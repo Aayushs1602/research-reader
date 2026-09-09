@@ -7,10 +7,22 @@ from app.database.session import Base
 def generate_uuid():
     return str(uuid.uuid4())
 
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    email = Column(String, unique=True, index=True, nullable=False)
+    username = Column(String, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    documents = relationship("Document", back_populates="user", cascade="all, delete-orphan")
+
 class Document(Base):
     __tablename__ = "documents"
 
     id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     filename = Column(String, nullable=False)
     original_name = Column(String, nullable=False)
     file_size = Column(Integer, default=0)
@@ -20,6 +32,7 @@ class Document(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    user = relationship("User", back_populates="documents")
     annotations = relationship("Annotation", back_populates="document", cascade="all, delete-orphan")
     notes = relationship("DocumentNote", back_populates="document", cascade="all, delete-orphan")
 
@@ -29,9 +42,9 @@ class Annotation(Base):
     id = Column(String, primary_key=True, default=generate_uuid)
     document_id = Column(String, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
     page_number = Column(Integer, nullable=False)
-    color = Column(String, default="#fef08a")  # Default soft yellow
+    color = Column(String, default="#fef08a")
     selected_text = Column(Text, nullable=False)
-    rects_json = Column(Text, nullable=False)  # JSON-stringified normalized bounding boxes
+    rects_json = Column(Text, nullable=False)
     comment_text = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 

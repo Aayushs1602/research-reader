@@ -1,6 +1,34 @@
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, EmailStr
+
+# --- User & Auth Schemas ---
+class UserBase(BaseModel):
+    email: str
+    username: str
+
+class UserCreate(BaseModel):
+    email: str
+    username: str
+    password: str = Field(min_length=6)
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
+class UserResponse(BaseModel):
+    id: str
+    email: str
+    username: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserResponse
 
 # --- Document Schemas ---
 class DocumentBase(BaseModel):
@@ -14,6 +42,7 @@ class DocumentProgressUpdate(BaseModel):
 
 class DocumentResponse(BaseModel):
     id: str
+    user_id: Optional[str] = None
     original_name: str
     file_size: int
     page_count: int
@@ -67,7 +96,7 @@ class DocumentNoteResponse(BaseModel):
 class AIDeepDiveRequest(BaseModel):
     selected_text: str
     context: Optional[str] = None
-    mode: str = "explain"  # "explain", "summarize", "search_queries", "critique"
+    mode: str = "explain"
 
 class AIDeepDiveResponse(BaseModel):
     query: str

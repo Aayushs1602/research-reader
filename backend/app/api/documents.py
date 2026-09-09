@@ -8,14 +8,19 @@ from sqlalchemy.orm import Session
 import pypdf
 
 from app.database.session import get_db
-from app.database.models import Document, DocumentNote
+from app.database.models import Document, DocumentNote, User
 from app.schemas.schemas import DocumentResponse, DocumentProgressUpdate
 from app.core.config import STORAGE_DIR
+from app.core.deps import get_current_user
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
 @router.post("/upload", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
-async def upload_document(file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def upload_document(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
 
@@ -40,9 +45,10 @@ async def upload_document(file: UploadFile = File(...), db: Session = Depends(ge
     except Exception:
         page_count = 1
 
-    # Create document record in database
+    # Create document record in database linked to authenticated user
     doc = Document(
         id=file_id,
+        user_id=current_user.id,
         filename=stored_filename,
         original_name=file.filename,
         file_size=file_size,
@@ -64,19 +70,36 @@ async def upload_document(file: UploadFile = File(...), db: Session = Depends(ge
     return doc
 
 @router.get("", response_model=List[DocumentResponse])
-def list_documents(db: Session = Depends(get_db)):
-    return db.query(Document).order_by(Document.updated_at.desc()).all()
+def list_documents(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # Only return documents belonging to current user
+    return (
+        db.query(Document)
+        .filter(Document.user_id == current_user.id)
+        .order_by(Document.updated_at.desc())
+        .all()
+    )
 
 @router.get("/{doc_id}", response_model=DocumentResponse)
-def get_document(doc_id: str, db: Session = Depends(get_db)):
-    doc = db.query(Document).filter(Document.id == doc_id).first()
+def get_document(
+    doc_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    doc = db.query(Document).filter(Document.id == doc_id, Document.user_id == current_user.id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
     return doc
 
 @router.get("/{doc_id}/file")
-def get_document_file(doc_id: str, db: Session = Depends(get_db)):
-    doc = db.query(Document).filter(Document.id == doc_id).first()
+def get_document_file(
+    doc_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    doc = db.query(Document).filter(Document.id == doc_id, Document.user_id == current_user.id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
@@ -91,8 +114,13 @@ def get_document_file(doc_id: str, db: Session = Depends(get_db)):
     )
 
 @router.patch("/{doc_id}/progress", response_model=DocumentResponse)
-def update_progress(doc_id: str, payload: DocumentProgressUpdate, db: Session = Depends(get_db)):
-    doc = db.query(Document).filter(Document.id == doc_id).first()
+def update_progress(
+    doc_id: str,
+    payload: DocumentProgressUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    doc = db.query(Document).filter(Document.id == doc_id, Document.user_id == current_user.id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
@@ -107,8 +135,12 @@ def update_progress(doc_id: str, payload: DocumentProgressUpdate, db: Session = 
     return doc
 
 @router.delete("/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_document(doc_id: str, db: Session = Depends(get_db)):
-    doc = db.query(Document).filter(Document.id == doc_id).first()
+def delete_document(
+    doc_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    doc = db.query(Document).filter(Document.id == doc_id, Document.user_id == current_user.id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 

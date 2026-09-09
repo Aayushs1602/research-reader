@@ -1,11 +1,19 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 from app.core.config import CORS_ORIGINS
 from app.database.session import Base, engine
-from app.api import documents, annotations, notes, ai
+from app.api import documents, annotations, notes, ai, auth
 
 # Ensure database tables exist
 Base.metadata.create_all(bind=engine)
+
+# Auto-migrate: check if user_id exists in documents table
+with engine.connect() as conn:
+    cols = [r[1] for r in conn.execute(text("PRAGMA table_info(documents)")).fetchall()]
+    if cols and "user_id" not in cols:
+        conn.execute(text("ALTER TABLE documents ADD COLUMN user_id TEXT REFERENCES users(id)"))
+        conn.commit()
 
 app = FastAPI(
     title="Research Reader API",
@@ -23,6 +31,7 @@ app.add_middleware(
 )
 
 # Register routes
+app.include_router(auth.router)
 app.include_router(documents.router)
 app.include_router(annotations.router)
 app.include_router(notes.router)

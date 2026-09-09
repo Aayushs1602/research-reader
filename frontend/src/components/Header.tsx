@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   BookOpen,
   ZoomIn,
@@ -9,9 +9,13 @@ import {
   FolderOpen,
   ChevronLeft,
   ChevronRight,
+  LogOut,
+  User as UserIcon,
+  ChevronDown,
 } from 'lucide-react';
 import type { DocumentMeta, ReadingTheme } from '../types';
 import { ThemeToggle } from './common/ThemeToggle';
+import { useAuth } from '../context/AuthContext';
 
 interface HeaderProps {
   currentDoc: DocumentMeta | null;
@@ -29,6 +33,7 @@ interface HeaderProps {
   onToggleSidebar: () => void;
   onToggleSearch: () => void;
   onOpenLibrary: () => void;
+  onOpenAuth: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -47,7 +52,22 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleSidebar,
   onToggleSearch,
   onOpenLibrary,
+  onOpenAuth,
 }) => {
+  const { user, logout } = useAuth();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, []);
+
   return (
     <header className="h-14 border-b flex items-center justify-between px-4 z-20 select-none bg-white/80 dark:bg-gray-900/80 backdrop-blur border-gray-200 dark:border-gray-800">
       {/* Left: App Logo & Library trigger */}
@@ -143,7 +163,7 @@ export const Header: React.FC<HeaderProps> = ({
         </button>
       </div>
 
-      {/* Right: Reading Ergonomics Themes & Split Sidebar Toggle */}
+      {/* Right: Reading Ergonomics Themes, Split Sidebar & User Profile */}
       <div className="flex items-center gap-2">
         <ThemeToggle theme={theme} onChange={onThemeChange} />
 
@@ -158,6 +178,52 @@ export const Header: React.FC<HeaderProps> = ({
         >
           {sidebarOpen ? <PanelRightClose className="w-4 h-4" /> : <PanelRightOpen className="w-4 h-4" />}
         </button>
+
+        {/* User Account / Profile Menu */}
+        {user ? (
+          <div ref={menuRef} className="relative">
+            <button
+              onClick={() => setMenuOpen(!menuOpen)}
+              className="flex items-center gap-1.5 p-1 pl-1.5 pr-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+              title={user.email}
+            >
+              <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 text-white text-xs font-bold flex items-center justify-center">
+                {user.username.charAt(0).toUpperCase()}
+              </div>
+              <span className="text-xs font-semibold max-w-[80px] truncate text-gray-700 dark:text-gray-300 hidden sm:inline">
+                {user.username}
+              </span>
+              <ChevronDown className="w-3 h-3 text-gray-400" />
+            </button>
+
+            {menuOpen && (
+              <div className="absolute right-0 mt-2 w-52 bg-white dark:bg-gray-900 rounded-xl shadow-xl border border-gray-200 dark:border-gray-800 p-2 z-50 animate-in fade-in duration-100">
+                <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-800">
+                  <p className="text-xs font-bold text-gray-900 dark:text-gray-100 truncate">{user.username}</p>
+                  <p className="text-[11px] text-gray-400 truncate">{user.email}</p>
+                </div>
+                <button
+                  onClick={() => {
+                    setMenuOpen(false);
+                    logout();
+                  }}
+                  className="w-full text-left px-3 py-2 text-xs font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-lg flex items-center gap-2 transition mt-1"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Log Out</span>
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <button
+            onClick={onOpenAuth}
+            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5 shadow-sm transition"
+          >
+            <UserIcon className="w-3.5 h-3.5" />
+            <span>Sign In</span>
+          </button>
+        )}
       </div>
     </header>
   );
