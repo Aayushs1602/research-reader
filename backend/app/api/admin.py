@@ -10,7 +10,7 @@ from sqlalchemy import text, func
 from app.database.session import get_db, engine
 from app.database.models import User, Document, Annotation, DocumentNote, DocumentChunk
 from app.core.config import DATABASE_URL, STORAGE_DIR
-from app.core.deps import get_current_user
+from app.core.deps import require_admin
 from app.services.chunking import chunk_document
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -42,7 +42,7 @@ def get_sanitized_db_info():
 @router.get("/health")
 def get_admin_health(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
 ):
     """Verifies database connectivity, latency, active dialect, and table metrics."""
     start_time = time.time()
@@ -96,7 +96,7 @@ def get_table_records(
     limit: int = Query(25, ge=1, le=100),
     search: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
 ):
     """Data explorer to browse records in any database table."""
     allowed_tables = {
@@ -158,7 +158,7 @@ def get_table_records(
 @router.get("/rag/documents")
 def get_rag_documents_status(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
 ):
     """Returns documents with chunk counts and token statistics."""
     docs = db.query(Document).order_by(Document.created_at.desc()).all()
@@ -186,7 +186,7 @@ def trigger_document_chunking(
     target_words: int = Query(150, ge=50, le=500),
     overlap_words: int = Query(30, ge=0, le=100),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
 ):
     """Executes sliding-window text chunking for a document."""
     doc = db.query(Document).filter(Document.id == document_id).first()
@@ -208,7 +208,7 @@ def trigger_document_chunking(
 def get_document_chunks(
     document_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
 ):
     """Retrieves all chunks for a document."""
     chunks = db.query(DocumentChunk)\
@@ -233,7 +233,7 @@ def get_document_chunks(
 def test_rag_search(
     data: Dict[str, Any],
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
 ):
     """
     RAG similarity testbed: searches across chunks using weighted lexical-semantic relevance,

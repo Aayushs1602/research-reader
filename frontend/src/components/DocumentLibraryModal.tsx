@@ -7,9 +7,12 @@ import {
   X,
   Loader2,
   BookOpen,
-  CheckCircle2
+  CheckCircle2,
+  Layers,
+  Sparkles,
 } from 'lucide-react';
 import type { DocumentMeta } from '../types';
+import { chunkUserDocument } from '../api/client';
 
 interface DocumentLibraryModalProps {
   isOpen: boolean;
@@ -18,6 +21,7 @@ interface DocumentLibraryModalProps {
   onSelectDocument: (id: string) => void;
   onUploadDocument: (file: File) => Promise<void>;
   onDeleteDocument: (id: string) => Promise<void>;
+  onRefreshDocuments?: () => void;
   onClose: () => void;
 }
 
@@ -28,12 +32,14 @@ export const DocumentLibraryModal: React.FC<DocumentLibraryModalProps> = ({
   onSelectDocument,
   onUploadDocument,
   onDeleteDocument,
+  onRefreshDocuments,
   onClose,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [chunkingDocId, setChunkingDocId] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -60,6 +66,19 @@ export const DocumentLibraryModal: React.FC<DocumentLibraryModalProps> = ({
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  };
+
+  const handleChunk = async (e: React.MouseEvent, docId: string) => {
+    e.stopPropagation();
+    setChunkingDocId(docId);
+    try {
+      await chunkUserDocument(docId);
+      if (onRefreshDocuments) onRefreshDocuments();
+    } catch (err: any) {
+      alert(`Failed to process document: ${err?.message || err}`);
+    } finally {
+      setChunkingDocId(null);
+    }
   };
 
   return (
@@ -204,11 +223,41 @@ export const DocumentLibraryModal: React.FC<DocumentLibraryModalProps> = ({
                           {Math.round(doc.progress_percent)}%
                         </span>
                       </div>
+
+                      {/* AI Chunking Status Badge */}
+                      <div className="flex items-center gap-2 mt-2">
+                        {doc.is_chunked ? (
+                          <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                            <Sparkles className="w-2.5 h-2.5 text-emerald-500" />
+                            AI Ready ({doc.chunk_count} chunks)
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-gray-400 px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+                            Not indexed for AI
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
 
                   {/* Actions */}
                   <div className="flex items-center gap-1">
+                    <button
+                      onClick={(e) => handleChunk(e, doc.id)}
+                      disabled={chunkingDocId === doc.id}
+                      className={`p-1.5 rounded-lg transition ${
+                        chunkingDocId === doc.id
+                          ? 'bg-indigo-50 text-indigo-600 animate-pulse'
+                          : 'text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950'
+                      }`}
+                      title={doc.is_chunked ? "Re-chunk & Index document for AI" : "Process & Chunk document for AI search"}
+                    >
+                      {chunkingDocId === doc.id ? (
+                        <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
+                      ) : (
+                        <Layers className="w-4 h-4" />
+                      )}
+                    </button>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();

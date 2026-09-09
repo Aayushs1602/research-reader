@@ -37,6 +37,7 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
   // Health state
   const [healthData, setHealthData] = useState<any>(null);
   const [loadingHealth, setLoadingHealth] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   // Explorer state
   const [selectedTable, setSelectedTable] = useState<string>('documents');
@@ -61,11 +62,13 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
   // Fetch health data
   const loadHealth = async () => {
     setLoadingHealth(true);
+    setAuthError(null);
     try {
       const data = await getAdminHealth();
       setHealthData(data);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to fetch health data:', err);
+      setAuthError('Access Denied: Administrator privileges required to view the Database & RAG Admin Hub.');
     } finally {
       setLoadingHealth(false);
     }
@@ -239,6 +242,15 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
 
         {/* Tab Content Container */}
         <div className="flex-1 overflow-y-auto p-6 bg-gray-50/50 dark:bg-gray-950/50">
+          {authError && (
+            <div className="mb-6 p-4 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200 text-xs flex items-center gap-3">
+              <AlertCircle className="w-5 h-5 text-rose-600 dark:text-rose-400 flex-shrink-0" />
+              <div>
+                <p className="font-bold">Access Restricted</p>
+                <p className="text-[11px] opacity-90">{authError}</p>
+              </div>
+            </div>
+          )}
 
           {/* TAB 1: HEALTH */}
           {activeTab === 'health' && (

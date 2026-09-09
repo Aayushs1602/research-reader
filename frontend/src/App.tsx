@@ -99,6 +99,15 @@ export function App() {
     loadDocs();
   }, [user]);
 
+  const refreshDocuments = useCallback(async () => {
+    try {
+      const docs = await getDocuments();
+      setDocuments(docs);
+    } catch (err) {
+      console.error('Error refreshing documents:', err);
+    }
+  }, []);
+
   // When active document changes, fetch its file blob with auth header
   useEffect(() => {
     if (!currentDocId || !user) {
@@ -473,6 +482,7 @@ export function App() {
         }}
         onUploadDocument={handleUploadDocument}
         onDeleteDocument={handleDeleteDocument}
+        onRefreshDocuments={refreshDocuments}
         onClose={() => setLibraryOpen(false)}
       />
 

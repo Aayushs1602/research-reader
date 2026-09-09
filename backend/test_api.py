@@ -109,14 +109,42 @@ def test_pdf_upload_and_annotations():
     print("[PASS] Delete annotation")
 
 def test_admin_and_rag():
+    from app.database.models import User, DocumentChunk
+    from app.database.session import SessionLocal
+
     # Login as test user
     login_res = client.post("/api/auth/login", json={"email": "tester@test.com", "password": "password123"})
     if login_res.status_code != 200:
         signup_res = client.post("/api/auth/signup", json={"email": "tester@test.com", "username": "Tester", "password": "password123"})
         token = signup_res.json()["access_token"]
+        user_id = signup_res.json()["user"]["id"]
     else:
         token = login_res.json()["access_token"]
+        user_id = login_res.json()["user"]["id"]
     headers = {"Authorization": f"Bearer {token}"}
+
+    # Ensure tester is initially non-admin to verify 403 Forbidden
+    db = SessionLocal()
+    try:
+        u = db.query(User).filter(User.id == user_id).first()
+        u.is_admin = False
+        db.commit()
+    finally:
+        db.close()
+
+    # Verify regular user cannot access admin health
+    forbidden_res = client.get("/api/admin/health", headers=headers)
+    assert forbidden_res.status_code == 403
+    print("[PASS] Security: Non-admin access to /api/admin/health blocked with 403 Forbidden")
+
+    # Now promote tester to admin
+    db = SessionLocal()
+    try:
+        u = db.query(User).filter(User.id == user_id).first()
+        u.is_admin = True
+        db.commit()
+    finally:
+        db.close()
 
     # 1. Admin Health
     health_res = client.get("/api/admin/health", headers=headers)
@@ -142,15 +170,12 @@ def test_admin_and_rag():
     doc_id = docs[0]["id"]
     print(f"[PASS] Admin RAG documents list ({len(docs)} documents)")
 
-    # 4. Chunk Document
-    chunk_res = client.post(f"/api/admin/rag/chunk/{doc_id}?target_words=100&overlap_words=20", headers=headers)
-    assert chunk_res.status_code == 200
-    chunk_summary = chunk_res.json()
-    print(f"[PASS] Admin RAG chunking endpoint (pages processed: {chunk_summary['pages_processed']})")
+    # 4. User-Level Document Chunking endpoint
+    user_chunk_res = client.post(f"/api/documents/{doc_id}/chunk?target_words=100&overlap_words=20", headers=headers)
+    assert user_chunk_res.status_code == 200
+    print(f"[PASS] User-Level Document Chunking endpoint (/api/documents/{doc_id}/chunk)")
 
     # Seed a test chunk if document was mock/text-less
-    from app.database.models import DocumentChunk
-    from app.database.session import SessionLocal
     db = SessionLocal()
     try:
         sample_chunk = DocumentChunk(
@@ -165,20 +190,20 @@ def test_admin_and_rag():
     finally:
         db.close()
 
-    # 5. Fetch Document Chunks
-    chunks_res = client.get(f"/api/admin/rag/chunks/{doc_id}", headers=headers)
-    assert chunks_res.status_code == 200
-    chunks = chunks_res.json()
+    # 5. User-Level Fetch Document Chunks
+    user_chunks_res = client.get(f"/api/documents/{doc_id}/chunks", headers=headers)
+    assert user_chunks_res.status_code == 200
+    chunks = user_chunks_res.json()
     assert len(chunks) >= 1
     assert "content" in chunks[0]
-    print(f"[PASS] Admin RAG fetch chunks ({len(chunks)} chunks retrieved)")
+    print(f"[PASS] User-Level Document chunks retrieval ({len(chunks)} chunks retrieved)")
 
-    # 6. Test RAG Search
-    search_res = client.post("/api/admin/rag/test-search", json={"query": "attention neural networks", "document_id": doc_id}, headers=headers)
-    assert search_res.status_code == 200
-    search_data = search_res.json()
+    # 6. User-Level Document RAG Search
+    user_search_res = client.post(f"/api/documents/{doc_id}/rag-search", json={"query": "attention neural networks"}, headers=headers)
+    assert user_search_res.status_code == 200
+    search_data = user_search_res.json()
     assert len(search_data["results"]) >= 1
-    print(f"[PASS] Admin RAG search testbed (query: '{search_data['query']}', top matches: {len(search_data['results'])})")
+    print(f"[PASS] User-Level Document RAG search (top matches: {len(search_data['results'])})")
 
 if __name__ == "__main__":
     test_health()

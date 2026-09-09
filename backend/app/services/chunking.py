@@ -89,13 +89,13 @@ def chunk_document(
             if not cleaned:
                 continue
 
-        page_chunks = split_text_into_chunks(
-            cleaned,
-            page_number=page_num,
-            target_words=target_words,
-            overlap_words=overlap_words,
-        )
-        all_chunks.extend(page_chunks)
+            page_chunks = split_text_into_chunks(
+                cleaned,
+                page_number=page_num,
+                target_words=target_words,
+                overlap_words=overlap_words,
+            )
+            all_chunks.extend(page_chunks)
 
     # Save to database
     chunk_objects = []
