@@ -6,6 +6,7 @@ import type {
   ReadingTheme,
   TOCItem,
   NormalizedRect,
+  SearchMatch,
 } from '../../types';
 import { PdfPage } from './PdfPage';
 import { SelectionToolbar } from './SelectionToolbar';
@@ -32,6 +33,8 @@ interface PdfViewerProps {
   onDocLoaded?: (doc: PDFDocumentProxy) => void;
   targetPageJump: number | null;
   onClearPageJump: () => void;
+  searchQuery?: string;
+  activeSearchMatch?: SearchMatch | null;
 }
 
 export const PdfViewer: React.FC<PdfViewerProps> = ({
@@ -49,6 +52,8 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
   onDocLoaded,
   targetPageJump,
   onClearPageJump,
+  searchQuery,
+  activeSearchMatch,
 }) => {
   const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
   const [loading, setLoading] = useState(true);
@@ -426,6 +431,13 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
             activeAnnotationId={activeAnnotationId}
             onSelectAnnotation={onSelectAnnotation}
             onPageVisible={onPageChange}
+            searchQuery={searchQuery}
+            isActiveSearchPage={activeSearchMatch?.pageNumber === pageNum}
+            activeSearchMatchIndex={
+              activeSearchMatch?.pageNumber === pageNum
+                ? activeSearchMatch.matchIndex
+                : null
+            }
           />
         ))}
       </div>

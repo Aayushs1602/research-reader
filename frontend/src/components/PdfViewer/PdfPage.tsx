@@ -3,6 +3,8 @@ import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
 import { pdfjsLib } from '../../utils/pdfWorker';
 import type { ParsedAnnotation, ReadingTheme } from '../../types';
 import { HighlightLayer } from './HighlightLayer';
+import { SearchHighlightLayer } from './SearchHighlightLayer';
+import { findMatchesInTextLayer, type PageSearchMatch } from '../../utils/searchHighlight';
 
 interface PdfPageProps {
   pdfDoc: PDFDocumentProxy;
@@ -13,6 +15,9 @@ interface PdfPageProps {
   activeAnnotationId: string | null;
   onSelectAnnotation: (id: string) => void;
   onPageVisible: (pageNumber: number) => void;
+  searchQuery?: string;
+  isActiveSearchPage?: boolean;
+  activeSearchMatchIndex?: number | null;
 }
 
 export const PdfPage: React.FC<PdfPageProps> = ({
@@ -24,12 +29,16 @@ export const PdfPage: React.FC<PdfPageProps> = ({
   activeAnnotationId,
   onSelectAnnotation,
   onPageVisible,
+  searchQuery,
+  isActiveSearchPage,
+  activeSearchMatchIndex,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textLayerRef = useRef<HTMLDivElement>(null);
   const [pageSize, setPageSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
   const [rendered, setRendered] = useState(false);
+  const [searchMatches, setSearchMatches] = useState<PageSearchMatch[]>([]);
 
   // IntersectionObserver for tracking current page in view
   useEffect(() => {
@@ -128,6 +137,37 @@ export const PdfPage: React.FC<PdfPageProps> = ({
     };
   }, [pdfDoc, pageNumber, scale]);
 
+  // Compute search match bounding rects in rendered textLayer
+  useEffect(() => {
+    if (!rendered || !searchQuery || searchQuery.trim().length < 2) {
+      setSearchMatches([]);
+      return;
+    }
+
+    const textLayerDiv = textLayerRef.current;
+    const pageEl = containerRef.current;
+    if (!textLayerDiv || !pageEl) {
+      setSearchMatches([]);
+      return;
+    }
+
+    const matches = findMatchesInTextLayer(textLayerDiv, pageEl, searchQuery);
+    setSearchMatches(matches);
+  }, [rendered, searchQuery, scale]);
+
+  // Smooth scroll active search match into center of viewport
+  useEffect(() => {
+    if (isActiveSearchPage && activeSearchMatchIndex !== null && searchMatches.length > 0) {
+      const timer = setTimeout(() => {
+        const activeEl = document.getElementById('search-active-match');
+        if (activeEl) {
+          activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [isActiveSearchPage, activeSearchMatchIndex, searchMatches]);
+
   return (
     <div
       ref={containerRef}
@@ -144,12 +184,21 @@ export const PdfPage: React.FC<PdfPageProps> = ({
       {/* 1. Canvas Rendering Layer (bottom) */}
       <canvas ref={canvasRef} className="block select-none relative z-[1]" />
 
-      {/* 2. Annotations & Highlights Overlay Layer (middle) */}
+      {/* 2. Annotations & User Highlights Overlay Layer (middle) */}
       {rendered && (
         <HighlightLayer
           annotations={annotations}
           activeAnnotationId={activeAnnotationId}
           onSelectAnnotation={onSelectAnnotation}
+        />
+      )}
+
+      {/* 2.5 In-document Search Blue Selection Highlights */}
+      {rendered && searchMatches.length > 0 && (
+        <SearchHighlightLayer
+          matches={searchMatches}
+          activeMatchIndex={isActiveSearchPage ? activeSearchMatchIndex ?? null : null}
+          theme={theme}
         />
       )}
 

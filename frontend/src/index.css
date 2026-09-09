@@ -100,6 +100,23 @@
   z-index: 10 !important;
 }
 
+/* Active search match pulse in blue */
+@keyframes search-glow {
+  0% {
+    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.9);
+  }
+  50% {
+    box-shadow: 0 0 12px 3px rgba(37, 99, 235, 0.85);
+  }
+  100% {
+    box-shadow: 0 0 0 1.5px #2563eb, 0 0 6px rgba(37, 99, 235, 0.4);
+  }
+}
+
+.search-active-pulse {
+  animation: search-glow 0.8s ease-out 1;
+}
+
 /* Smooth custom scrollbars */
 ::-webkit-scrollbar {
   width: 8px;
