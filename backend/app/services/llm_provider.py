@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import logging
 from typing import Optional, Dict, Any, List
@@ -188,7 +189,7 @@ async def generate_completion(
     provider = (provider or ("gemini" if IS_PROD else "ollama")).lower()
 
     if provider == "ollama":
-        return await _generate_ollama(
+        raw = await _generate_ollama(
             prompt=prompt,
             system_prompt=system_prompt,
             model=model,
@@ -202,7 +203,7 @@ async def generate_completion(
             raise LLMProviderError(
                 "Gemini API key is required in production mode. Please enter your API key in AI Settings (gear icon) or configure GEMINI_API_KEY in backend/.env."
             )
-        return await _generate_gemini(
+        raw = await _generate_gemini(
             prompt=prompt,
             system_prompt=system_prompt,
             api_key=key,
@@ -217,7 +218,7 @@ async def generate_completion(
             raise LLMProviderError(
                 "Anthropic Claude API key is required in production mode. Please enter your API key in AI Settings (gear icon) or configure ANTHROPIC_API_KEY in backend/.env."
             )
-        return await _generate_anthropic(
+        raw = await _generate_anthropic(
             prompt=prompt,
             system_prompt=system_prompt,
             api_key=key,
@@ -233,7 +234,7 @@ async def generate_completion(
             raise LLMProviderError(
                 f"{provider.capitalize()} API key is required in production mode. Please enter your API key in AI Settings (gear icon) or configure {env_var} in backend/.env."
             )
-        return await _generate_openai_compatible(
+        raw = await _generate_openai_compatible(
             prompt=prompt,
             system_prompt=system_prompt,
             provider=provider,
@@ -245,6 +246,27 @@ async def generate_completion(
 
     else:
         raise LLMProviderError(f"Unsupported AI provider: {provider}")
+
+    return strip_unwanted_markdown_fences(raw)
+
+def strip_unwanted_markdown_fences(text: str) -> str:
+    """
+    Strips accidental ```markdown ... ``` or ``` ... ``` wrappers that local models
+    like Ollama sometimes enclose their entire response with.
+    """
+    if not text:
+        return ""
+    stripped = text.strip()
+
+    # Match ```markdown ... ```
+    match = re.match(r"^```(?:markdown|md)?\s*\n([\s\S]*?)\n```(?:\s*\n\s*[\s\S]*)?$", stripped, re.IGNORECASE)
+    if match:
+        inner = match.group(1).strip()
+        trailing = re.sub(r"^```(?:markdown|md)?\s*\n[\s\S]*?\n```\s*", "", stripped, flags=re.IGNORECASE).strip()
+        if trailing:
+            return f"{inner}\n\n{trailing}"
+        return inner
+    return stripped
 
 async def _generate_ollama(
     prompt: str,

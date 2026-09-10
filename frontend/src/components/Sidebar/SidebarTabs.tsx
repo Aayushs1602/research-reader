@@ -52,9 +52,9 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
   onSearchInDoc,
 }) => {
   return (
-    <aside className="w-96 md:w-[420px] lg:w-[460px] h-full flex flex-col border-l border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg z-10">
+    <aside className="w-96 md:w-[420px] lg:w-[460px] h-full flex flex-col border-l border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg z-10 min-w-0 overflow-hidden">
       {/* Top Tab Switcher */}
-      <div className="flex items-center border-b border-gray-200 dark:border-gray-800 px-2 pt-2 bg-gray-50/70 dark:bg-gray-900/70">
+      <div className="flex items-center border-b border-gray-200 dark:border-gray-800 px-2 pt-2 bg-gray-50/70 dark:bg-gray-900/70 overflow-x-hidden min-w-0">
         <button
           onClick={() => onChangeTab('notes')}
           className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-t-lg transition border-b-2 ${
@@ -110,7 +110,7 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
       </div>
 
       {/* Tab Panels */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {activeTab === 'notes' && (
           <MarkdownNotepad
             initialContent={notesContent}

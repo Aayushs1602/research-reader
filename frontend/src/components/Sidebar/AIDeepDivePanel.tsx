@@ -433,22 +433,81 @@ export const AIDeepDivePanel: React.FC<AIDeepDivePanelProps> = ({
     }
   };
 
+  // Helper to sanitize markdown content and strip accidental code fences from LLMs
+  const sanitizeMarkdownContent = (raw: string): string => {
+    if (!raw) return '';
+    let text = raw.trim();
+
+    // 1. Strip full ```markdown ... ``` or ``` ... ``` wrappers
+    text = text.replace(/^```(?:markdown|md)?\s*\n([\s\S]*?)\n```$/i, '$1');
+
+    // 2. Strip ```markdown ... ``` when followed by commentary text
+    text = text.replace(/^```(?:markdown|md)?\s*\n([\s\S]*?)\n```\s*\n?/i, '$1\n\n');
+
+    // 3. Strip any general ```markdown blocks used purely for formatting
+    text = text.replace(/```(?:markdown|md)\s*\n([\s\S]*?)\n```/gi, '$1');
+
+    // 4. Remove 4+ leading spaces before markdown headers or bullet items (prevents indented code blocks)
+    text = text.replace(/^[ \t]{4,}(?=[#\-*>]|\d+\.)/gm, '');
+
+    return text.trim();
+  };
+
   // Helper to render markdown and make [Page X] clickable
   const renderMarkdownWithPageCitations = (content: string) => {
+    const cleanContent = sanitizeMarkdownContent(content);
     return (
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          // Render citation pills for [Page X] references
+          pre: ({ children }) => (
+            <pre className="p-2.5 my-2 rounded-lg bg-gray-100 dark:bg-gray-950 text-[11px] font-mono whitespace-pre-wrap break-words [word-break:break-word] overflow-x-auto border border-gray-200 dark:border-gray-800">
+              {children}
+            </pre>
+          ),
+          code: ({ inline, children, ...props }: any) => {
+            if (inline) {
+              return (
+                <code className="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-[11px] font-mono text-indigo-600 dark:text-indigo-400" {...props}>
+                  {children}
+                </code>
+              );
+            }
+            return (
+              <code className="break-words [word-break:break-word] whitespace-pre-wrap font-mono" {...props}>
+                {children}
+              </code>
+            );
+          },
+          h1: ({ children }) => (
+            <h1 className="text-sm font-bold text-gray-900 dark:text-gray-100 mt-3 mb-1.5 leading-snug break-words">
+              {renderPageCitationsInText(children)}
+            </h1>
+          ),
+          h2: ({ children }) => (
+            <h2 className="text-xs font-bold text-gray-900 dark:text-gray-100 mt-2.5 mb-1 leading-snug break-words">
+              {renderPageCitationsInText(children)}
+            </h2>
+          ),
+          h3: ({ children }) => (
+            <h3 className="text-xs font-bold text-indigo-600 dark:text-indigo-400 mt-2.5 mb-1 leading-snug break-words">
+              {renderPageCitationsInText(children)}
+            </h3>
+          ),
+          h4: ({ children }) => (
+            <h4 className="text-xs font-semibold text-gray-800 dark:text-gray-200 mt-2 mb-0.5 leading-snug break-words">
+              {renderPageCitationsInText(children)}
+            </h4>
+          ),
           p: ({ children }) => {
-            return <p className="mb-2 leading-relaxed">{renderPageCitationsInText(children)}</p>;
+            return <p className="mb-2 leading-relaxed text-xs break-words">{renderPageCitationsInText(children)}</p>;
           },
           li: ({ children }) => {
-            return <li className="my-0.5">{renderPageCitationsInText(children)}</li>;
+            return <li className="my-0.5 text-xs break-words">{renderPageCitationsInText(children)}</li>;
           },
         }}
       >
-        {content}
+        {cleanContent}
       </ReactMarkdown>
     );
   };
@@ -494,9 +553,9 @@ export const AIDeepDivePanel: React.FC<AIDeepDivePanelProps> = ({
       : `${providerName.toUpperCase()}: ${aiSettings?.model || 'Cloud'}`;
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden bg-white dark:bg-gray-900">
+    <div className="flex-1 flex flex-col h-full overflow-hidden min-w-0 bg-white dark:bg-gray-900">
       {/* Top AI Engine Status & Settings Trigger */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-900/70 select-none">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-900/70 select-none min-w-0">
         <div className="flex items-center gap-2 min-w-0">
           <div className="p-1 rounded-lg bg-gradient-to-tr from-purple-600 to-indigo-600 text-white flex-shrink-0">
             <Sparkles className="w-3.5 h-3.5" />
@@ -511,7 +570,7 @@ export const AIDeepDivePanel: React.FC<AIDeepDivePanelProps> = ({
           </button>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 flex-shrink-0">
           {result && activeSubTab === 'deep_dive' && (
             <a
               href={result.google_search_url}
@@ -535,7 +594,7 @@ export const AIDeepDivePanel: React.FC<AIDeepDivePanelProps> = ({
       </div>
 
       {/* Sub-tab switcher: Concept Deep Dive vs Ask Paper (RAG Chat) */}
-      <div className="flex items-center border-b border-gray-200 dark:border-gray-800 px-3 pt-1.5 bg-gray-50/40 dark:bg-gray-900/40 gap-1 select-none">
+      <div className="flex items-center border-b border-gray-200 dark:border-gray-800 px-3 pt-1.5 bg-gray-50/40 dark:bg-gray-900/40 gap-1 select-none overflow-x-hidden min-w-0">
         <button
           onClick={() => setActiveSubTab('deep_dive')}
           className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-t-lg transition border-b-2 ${
@@ -568,7 +627,7 @@ export const AIDeepDivePanel: React.FC<AIDeepDivePanelProps> = ({
 
       {/* Mode 1: Concept Deep Dive */}
       {activeSubTab === 'deep_dive' && (
-        <div className="flex-1 flex flex-col overflow-y-auto p-3.5">
+        <div className="flex-1 flex flex-col overflow-y-auto overflow-x-hidden min-w-0 p-3.5">
           {/* Query Input & Mode Selector */}
           <div className="space-y-2 mb-3">
             <textarea
@@ -626,13 +685,13 @@ export const AIDeepDivePanel: React.FC<AIDeepDivePanelProps> = ({
               <p className="text-xs">Reasoning with {providerName.toUpperCase()}...</p>
             </div>
           ) : result ? (
-            <div className="flex-1 space-y-4 pt-1">
-              <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700/60">
+            <div className="flex-1 space-y-4 pt-1 min-w-0">
+              <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700/60 min-w-0 overflow-hidden break-words [word-break:break-word]">
                 {parsedData.queries.length > 0 ? (
-                  <div className="space-y-3">
+                  <div className="space-y-3 min-w-0">
                     {/* Preamble if present */}
                     {parsedData.preamble && (
-                      <div className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed font-medium">
+                      <div className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed font-medium break-words [word-break:break-word] min-w-0">
                         {renderMarkdownWithPageCitations(parsedData.preamble)}
                       </div>
                     )}
@@ -730,9 +789,6 @@ export const AIDeepDivePanel: React.FC<AIDeepDivePanelProps> = ({
                                 </a>
                               </div>
 
-                              <span className="text-[9px] text-gray-400 select-none">
-                                Logged to Console
-                              </span>
                             </div>
 
                             {/* Reason Section: Hidden by default, collapsible or visible when toggled */}
@@ -761,7 +817,7 @@ export const AIDeepDivePanel: React.FC<AIDeepDivePanelProps> = ({
                     </div>
                   </div>
                 ) : (
-                  <div className="prose prose-xs dark:prose-invert max-w-none text-gray-800 dark:text-gray-200">
+                  <div className="prose prose-xs dark:prose-invert max-w-none break-words [word-break:break-word] text-gray-800 dark:text-gray-200 min-w-0 overflow-hidden">
                     {renderMarkdownWithPageCitations(result.explanation)}
                   </div>
                 )}
@@ -825,9 +881,9 @@ export const AIDeepDivePanel: React.FC<AIDeepDivePanelProps> = ({
 
       {/* Mode 2: Ask Paper (Conversational RAG) */}
       {activeSubTab === 'chat' && (
-        <div className="flex-1 flex flex-col h-full overflow-hidden">
+        <div className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
           {/* Messages Area */}
-          <div className="flex-1 overflow-y-auto p-3.5 space-y-3.5">
+          <div className="flex-1 overflow-y-auto overflow-x-hidden p-3.5 space-y-3.5 min-w-0">
             {messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-6 text-center text-gray-400">
                 <div className="w-10 h-10 rounded-full bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mb-2">

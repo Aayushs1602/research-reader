@@ -152,7 +152,8 @@ async def deep_dive(
             "2) Detail any mathematical formula, notation, or specific architecture they use for it. "
             "3) Note any unique nuance or divergence from standard textbook definitions. "
             "4) If the term is used without formal redefinition, explain how the authors apply it in their methodology. "
-            "5) Always cite the exact page number like [Page X]."
+            "5) Always cite the exact page number like [Page X]. "
+            "6) Format directly with Markdown headings and bullet points. Never wrap your entire answer in backticks or code blocks (no ```markdown)."
         ),
     }
 
@@ -177,7 +178,7 @@ async def deep_dive(
                     f"[Page {c['page_number']}]: {c['content']}" for c in chunks
                 )
 
-    user_prompt = f"{paper_context}\n\nTarget term or concept to define in paper context:\n\"{query_text}\"\n\nPlease provide your analysis in clean Markdown."
+    user_prompt = f"{paper_context}\n\nTarget term or concept to define in paper context:\n\"{query_text}\"\n\nPlease provide your analysis directly as formatted text (do NOT wrap your answer in a code fence)."
 
     default_provider = "gemini" if IS_PROD else "ollama"
     provider = x_ai_provider or default_provider
