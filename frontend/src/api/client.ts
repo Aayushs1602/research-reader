@@ -3,6 +3,9 @@ import type {
   Annotation,
   DocumentNote,
   AIDeepDiveResponse,
+  AIChatResponse,
+  AIProvidersInfo,
+  AISettings,
   User,
   AuthResponse
 } from '../types';
@@ -11,6 +14,28 @@ const rawApiBase = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 const API_BASE = rawApiBase.replace(/\/+$/, '');
 
 const TOKEN_KEY = 'research_reader_auth_token';
+const AI_SETTINGS_KEY = 'research_reader_ai_settings';
+
+export const DEFAULT_AI_SETTINGS: AISettings = {
+  provider: 'gemini',
+  apiKey: '',
+  model: 'gemini-1.5-flash',
+  ollamaUrl: 'http://localhost:11434',
+};
+
+export function getStoredAISettings(): AISettings {
+  try {
+    const raw = localStorage.getItem(AI_SETTINGS_KEY);
+    if (!raw) return DEFAULT_AI_SETTINGS;
+    return { ...DEFAULT_AI_SETTINGS, ...JSON.parse(raw) };
+  } catch {
+    return DEFAULT_AI_SETTINGS;
+  }
+}
+
+export function setStoredAISettings(settings: AISettings): void {
+  localStorage.setItem(AI_SETTINGS_KEY, JSON.stringify(settings));
+}
 
 export function getStoredToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
@@ -26,10 +51,27 @@ export function clearStoredToken(): void {
 
 function getAuthHeaders(extraHeaders: Record<string, string> = {}): Record<string, string> {
   const token = getStoredToken();
+  const aiSettings = getStoredAISettings();
   const headers: Record<string, string> = { ...extraHeaders };
+
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
+
+  // Forward client-side BYOK configuration
+  if (aiSettings.provider) {
+    headers['X-AI-Provider'] = aiSettings.provider;
+  }
+  if (aiSettings.apiKey) {
+    headers['X-AI-Key'] = aiSettings.apiKey;
+  }
+  if (aiSettings.model) {
+    headers['X-AI-Model'] = aiSettings.model;
+  }
+  if (aiSettings.ollamaUrl) {
+    headers['X-Ollama-Url'] = aiSettings.ollamaUrl;
+  }
+
   return headers;
 }
 
@@ -198,15 +240,103 @@ export async function updateDocumentNotes(docId: string, content: string): Promi
   return res.json();
 }
 
-// --- AI Endpoint ---
+// --- AI Endpoints ---
 
-export async function fetchAIDeepDive(selectedText: string, mode = 'explain'): Promise<AIDeepDiveResponse> {
+export async function fetchAIDeepDive(
+  selectedText: string,
+  mode = 'explain',
+  documentId?: string,
+  currentPage?: number
+): Promise<AIDeepDiveResponse> {
   const res = await fetch(`${API_BASE}/api/ai/deep-dive`, {
     method: 'POST',
     headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ selected_text: selectedText, mode }),
+    body: JSON.stringify({
+      selected_text: selectedText,
+      mode,
+      document_id: documentId,
+      current_page: currentPage,
+    }),
   });
-  if (!res.ok) throw new Error('Failed to run AI deep dive');
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to run AI deep dive' }));
+    throw new Error(err.detail || 'Failed to run AI deep dive');
+  }
+  return res.json();
+}
+
+export async function fetchAIChat(
+  documentId: string | undefined,
+  question: string,
+  currentPage?: number,
+  history: { role: string; content: string }[] = [],
+  mode = 'qa'
+): Promise<AIChatResponse> {
+  const res = await fetch(`${API_BASE}/api/ai/chat`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({
+      document_id: documentId,
+      question,
+      current_page: currentPage,
+      history,
+      mode,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to query AI research assistant' }));
+    throw new Error(err.detail || 'Failed to query AI research assistant');
+  }
+  return res.json();
+}
+
+export async function fetchAISummary(
+  documentId: string,
+  mode = 'executive'
+): Promise<AIChatResponse> {
+  const res = await fetch(`${API_BASE}/api/ai/summary`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({
+      document_id: documentId,
+      mode,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to generate summary' }));
+    throw new Error(err.detail || 'Failed to generate summary');
+  }
+  return res.json();
+}
+
+export async function getAIProviders(): Promise<AIProvidersInfo> {
+  const res = await fetch(`${API_BASE}/api/ai/providers`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch AI providers info');
+  return res.json();
+}
+
+export async function testAIConnection(
+  provider: string,
+  apiKey?: string,
+  model?: string,
+  ollamaUrl?: string
+): Promise<{ success: boolean; provider: string; message: string; models?: string[] }> {
+  const res = await fetch(`${API_BASE}/api/ai/test-connection`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({
+      provider,
+      api_key: apiKey,
+      model,
+      ollama_url: ollamaUrl,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Test connection failed' }));
+    throw new Error(err.detail || 'Test connection failed');
+  }
   return res.json();
 }
 

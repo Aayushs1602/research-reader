@@ -20,6 +20,23 @@ elif _raw_db_url.startswith("postgres://"):
 else:
     DATABASE_URL = _raw_db_url
 
+# Environment mode: 'prod' (default: uses cloud API key path) or 'local' (uses local Ollama)
+APP_ENV = os.getenv("APP_ENV", os.getenv("ENVIRONMENT", "prod")).strip().lower()
+IS_PROD = APP_ENV != "local"  # defaults to True (prod)
+IS_LOCAL = APP_ENV == "local"
+
+# Control whether AI explanations display verbose 'Reason:' blocks in UI
+SHOW_AI_REASONS = os.getenv("SHOW_AI_REASONS", "false").strip().lower() in ("true", "1", "yes")
+
+# Provider environment key mappings for server-side testing & production
+PROVIDER_ENV_KEYS = {
+    "gemini": "GEMINI_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+    "groq": "GROQ_API_KEY",
+    "deepseek": "DEEPSEEK_API_KEY",
+}
+
 # Security & JWT settings
 SECRET_KEY = os.getenv("SECRET_KEY", "research-reader-secret-key-super-secure-change-in-prod-2026")
 ALGORITHM = "HS256"

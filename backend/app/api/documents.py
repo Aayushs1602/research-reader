@@ -82,6 +82,14 @@ async def upload_document(
 
     db.commit()
     db.refresh(doc)
+
+    # Automatically chunk the uploaded document for instant AI readiness
+    try:
+        chunk_document(db, doc)
+    except Exception as e:
+        # Don't fail upload if chunking encounters an issue
+        pass
+
     return serialize_doc(doc, db)
 
 @router.get("", response_model=List[DocumentResponse])

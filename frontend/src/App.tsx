@@ -7,6 +7,7 @@ import type {
   TOCItem,
   NormalizedRect,
   SearchMatch,
+  AISettings,
 } from './types';
 import {
   getDocuments,
@@ -19,11 +20,13 @@ import {
   deleteAnnotation,
   getDocumentNotes,
   updateDocumentNotes,
+  getStoredAISettings,
 } from './api/client';
 
 import { useAuth } from './context/AuthContext';
 import { AuthModal } from './components/Auth/AuthModal';
 import { AdminModal } from './components/Admin/AdminModal';
+import { AISettingsModal } from './components/AI/AISettingsModal';
 import { Header } from './components/Header';
 import { PdfViewer } from './components/PdfViewer/PdfViewer';
 import { SearchBar } from './components/PdfViewer/SearchBar';
@@ -35,6 +38,8 @@ export function App() {
   const { user, isLoading: authLoading } = useAuth();
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [adminModalOpen, setAdminModalOpen] = useState(false);
+  const [aiSettingsModalOpen, setAiSettingsModalOpen] = useState(false);
+  const [aiSettings, setAiSettings] = useState<AISettings>(getStoredAISettings());
 
   const [documents, setDocuments] = useState<DocumentMeta[]>([]);
   const [currentDocId, setCurrentDocId] = useState<string | null>(null);
@@ -56,6 +61,7 @@ export function App() {
   const [notesContent, setNotesContent] = useState('');
   const [outline, setOutline] = useState<TOCItem[]>([]);
   const [aiQuery, setAiQuery] = useState('');
+  const [aiMode, setAiMode] = useState('explain');
   const [targetPageJump, setTargetPageJump] = useState<number | null>(null);
   const [activePdfDoc, setActivePdfDoc] = useState<PDFDocumentProxy | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -241,6 +247,12 @@ export function App() {
     []
   );
 
+  // Trigger in-document search and highlight from AI keywords or external triggers
+  const handleSearchInDoc = useCallback((term: string) => {
+    setIsSearching(true);
+    setSearchQuery(term);
+  }, []);
+
   // When clicking a highlight directly on the PDF
   const handleSelectAnnotationOnPdf = (annotationId: string) => {
     setActiveAnnotationId(annotationId);
@@ -311,8 +323,9 @@ export function App() {
   };
 
   // AI Deep Dive Trigger (USP)
-  const handleAIDeepDive = (text: string) => {
+  const handleAIDeepDive = (text: string, mode: string = 'explain') => {
     setAiQuery(text);
+    setAiMode(mode);
     setSidebarOpen(true);
     setActiveSidebarTab('ai');
   };
@@ -371,6 +384,7 @@ export function App() {
         onOpenLibrary={() => setLibraryOpen(true)}
         onOpenAuth={() => setAuthModalOpen(true)}
         onOpenAdmin={() => setAdminModalOpen(true)}
+        onOpenAISettings={() => setAiSettingsModalOpen(true)}
       />
 
       {/* Main Reading Canvas & Split Sidebar */}
@@ -412,10 +426,16 @@ export function App() {
                 activeAnnotationId={activeAnnotationId}
                 outline={outline}
                 aiQuery={aiQuery}
+                aiMode={aiMode}
+                documentId={currentDocId}
+                currentPage={currentPage}
+                aiSettings={aiSettings}
+                onOpenAISettings={() => setAiSettingsModalOpen(true)}
                 onSaveNotes={handleSaveNotes}
                 onJumpToPage={handleJumpToPage}
                 onJumpToAnnotation={handleJumpToAnnotation}
                 onDeleteAnnotation={handleDeleteAnnotation}
+                onSearchInDoc={handleSearchInDoc}
                 onAppendToNotes={(snippet) => {
                   setNotesContent((prev) => prev + snippet);
                   handleSaveNotes(notesContent + snippet);
@@ -458,6 +478,7 @@ export function App() {
       <SearchBar
         pdfDoc={activePdfDoc}
         isOpen={isSearching}
+        initialQuery={searchQuery}
         onClose={() => {
           setIsSearching(false);
           setSearchQuery('');
@@ -497,6 +518,13 @@ export function App() {
       <AdminModal
         isOpen={adminModalOpen}
         onClose={() => setAdminModalOpen(false)}
+      />
+
+      {/* AI Engine & BYOK Settings Modal */}
+      <AISettingsModal
+        isOpen={aiSettingsModalOpen}
+        onClose={() => setAiSettingsModalOpen(false)}
+        onSettingsSaved={(newSettings) => setAiSettings(newSettings)}
       />
     </div>
   );
