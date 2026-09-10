@@ -26,7 +26,12 @@ from app.services.llm_provider import (
     LLMProviderError,
     DEFAULT_OLLAMA_URL,
 )
-from app.services.chunking import retrieve_relevant_chunks, retrieve_definition_chunks, chunk_document
+from app.services.chunking import (
+    retrieve_relevant_chunks,
+    retrieve_definition_chunks,
+    chunk_document,
+    ensure_document_chunked,
+)
 import os
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
@@ -157,6 +162,7 @@ async def deep_dive(
     if payload.document_id:
         doc = db.query(Document).filter(Document.id == payload.document_id, Document.user_id == current_user.id).first()
         if doc:
+            ensure_document_chunked(db, doc)
             paper_context = f"\nPaper: \"{doc.original_name}\""
             # If in definition mode, specifically use retrieve_definition_chunks
             if payload.mode == "define":
@@ -257,13 +263,8 @@ async def chat_with_document(
             raise HTTPException(status_code=404, detail="Document not found.")
         doc_name = doc.original_name
 
-        # Ensure document is chunked
-        chunk_count = db.query(DocumentChunk).filter(DocumentChunk.document_id == doc.id).count()
-        if chunk_count == 0:
-            try:
-                chunk_document(db, doc)
-            except Exception:
-                pass
+        # Ensure document is properly chunked across all pages
+        ensure_document_chunked(db, doc)
 
         # Retrieve top relevant chunks based on mode
         if payload.mode == "define":
@@ -382,11 +383,9 @@ async def generate_paper_summary(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found.")
 
-    # Fetch chunks from page 1 & 2 (Abstract / Intro) and last pages (Discussion / Conclusion)
+    # Ensure document is properly chunked across all pages
+    ensure_document_chunked(db, doc)
     chunks = db.query(DocumentChunk).filter(DocumentChunk.document_id == doc.id).order_by(DocumentChunk.chunk_index.asc()).all()
-    if not chunks:
-        chunk_document(db, doc)
-        chunks = db.query(DocumentChunk).filter(DocumentChunk.document_id == doc.id).order_by(DocumentChunk.chunk_index.asc()).all()
 
     # Grab first 4 chunks and last 3 chunks
     selected_chunks = chunks[:4] + (chunks[-3:] if len(chunks) > 7 else [])

@@ -339,3 +339,27 @@ def retrieve_definition_chunks(
 
     return scored[:top_k]
 
+def ensure_document_chunked(db: Session, document: Document) -> int:
+    """
+    Ensures a document has chunks covering all its pages.
+    Auto-detects documents with 0 chunks or legacy single-page chunking,
+    and re-chunks them across all pages.
+    """
+    chunk_count = db.query(DocumentChunk).filter(DocumentChunk.document_id == document.id).count()
+    if chunk_count == 0:
+        try:
+            summary = chunk_document(db, document)
+            return summary.get("chunks_generated", 0)
+        except Exception:
+            return 0
+    elif document.page_count and document.page_count > 2:
+        distinct_pages = db.query(DocumentChunk.page_number).filter(DocumentChunk.document_id == document.id).distinct().count()
+        if distinct_pages <= 1:
+            try:
+                summary = chunk_document(db, document)
+                return summary.get("chunks_generated", 0)
+            except Exception:
+                return chunk_count
+    return chunk_count
+
+
