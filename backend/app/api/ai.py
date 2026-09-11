@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.database.session import get_db
 from app.database.models import User, Document, DocumentChunk
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, get_optional_current_user
 from app.core.config import IS_PROD, IS_LOCAL, PROVIDER_ENV_KEYS, SHOW_AI_REASONS
 from app.schemas.schemas import (
     AIDeepDiveRequest,
@@ -107,7 +107,7 @@ async def test_connection(payload: AITestConnectionRequest):
 async def deep_dive(
     payload: AIDeepDiveRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_optional_current_user),
     x_ai_provider: Optional[str] = Header(None, alias="X-AI-Provider"),
     x_ai_key: Optional[str] = Header(None, alias="X-AI-Key"),
     x_ai_model: Optional[str] = Header(None, alias="X-AI-Model"),
@@ -160,7 +160,7 @@ async def deep_dive(
     system_prompt = mode_prompts.get(payload.mode, mode_prompts["explain"])
 
     paper_context = ""
-    if payload.document_id:
+    if payload.document_id and current_user:
         doc = db.query(Document).filter(Document.id == payload.document_id, Document.user_id == current_user.id).first()
         if doc:
             ensure_document_chunked(db, doc)
@@ -179,6 +179,22 @@ async def deep_dive(
                 )
 
     user_prompt = f"{paper_context}\n\nTarget term or concept to define in paper context:\n\"{query_text}\"\n\nPlease provide your analysis directly as formatted text (do NOT wrap your answer in a code fence)."
+
+    # Enforce BYOK in prod for unauthenticated / guest requests
+    if current_user is None and IS_PROD and not x_ai_key:
+        explanation = (
+            "⚠️ **API Key Required (BYOK in Production)**\n\n"
+            "To use AI features as a guest without logging in, please configure your own API key in AI Settings.\n\n"
+            "Click **⚙️ AI Settings** in the top navigation or sidebar to enter your free Google Gemini, OpenAI, or Groq API key."
+        )
+        return AIDeepDiveResponse(
+            query=query_text,
+            explanation=explanation,
+            google_search_url=google_url,
+            suggested_followups=["How to get a free Google Gemini API key?"],
+            provider_used="none",
+            model_used="none",
+        )
 
     default_provider = "gemini" if IS_PROD else "ollama"
     provider = x_ai_provider or default_provider
@@ -235,7 +251,7 @@ async def deep_dive(
 async def chat_with_document(
     payload: AIChatRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_optional_current_user),
     x_ai_provider: Optional[str] = Header(None, alias="X-AI-Provider"),
     x_ai_key: Optional[str] = Header(None, alias="X-AI-Key"),
     x_ai_model: Optional[str] = Header(None, alias="X-AI-Model"),
@@ -249,6 +265,20 @@ async def chat_with_document(
     if not question:
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
 
+    # Enforce BYOK in prod for unauthenticated / guest requests
+    if current_user is None and IS_PROD and not x_ai_key:
+        return AIChatResponse(
+            answer=(
+                "⚠️ **API Key Required (BYOK in Production)**\n\n"
+                "To use the AI research assistant in guest mode without logging in, please configure your own API key in AI Settings.\n\n"
+                "Click **⚙️ AI Settings** in the top navigation or sidebar to enter your free Google Gemini, OpenAI, or Groq API key."
+            ),
+            cited_chunks=[],
+            suggested_followups=[],
+            provider_used="none",
+            model_used="none",
+        )
+
     default_provider = "gemini" if IS_PROD else "ollama"
     provider = x_ai_provider or default_provider
     model = x_ai_model
@@ -258,7 +288,7 @@ async def chat_with_document(
     cited_chunks: List[CitedChunk] = []
     context_text = ""
 
-    if payload.document_id:
+    if payload.document_id and current_user:
         doc = db.query(Document).filter(Document.id == payload.document_id, Document.user_id == current_user.id).first()
         if not doc:
             raise HTTPException(status_code=404, detail="Document not found.")

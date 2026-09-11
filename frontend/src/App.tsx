@@ -22,6 +22,20 @@ import {
   updateDocumentNotes,
   getStoredAISettings,
 } from './api/client';
+import {
+  getLocalDocuments,
+  saveLocalDocument,
+  getLocalDocumentBlob,
+  deleteLocalDocument,
+  updateLocalProgress,
+  getLocalAnnotations,
+  saveLocalAnnotation,
+  deleteLocalAnnotation,
+  getLocalNotes,
+  saveLocalNotes,
+  chunkLocalDocument,
+} from './utils/localDocumentStorage';
+import { pdfjsLib } from './utils/pdfWorker';
 
 import { useAuth } from './context/AuthContext';
 import { AuthModal } from './components/Auth/AuthModal';
@@ -35,7 +49,7 @@ import { DocumentLibraryModal } from './components/DocumentLibraryModal';
 import { BookOpen, UploadCloud, Loader2 } from 'lucide-react';
 
 export function App() {
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, isGuest, isLoading: authLoading } = useAuth();
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [adminModalOpen, setAdminModalOpen] = useState(false);
   const [aiSettingsModalOpen, setAiSettingsModalOpen] = useState(false);
@@ -72,9 +86,9 @@ export function App() {
     [documents, currentDocId]
   );
 
-  // Load user's private documents when logged in
+  // Load documents: from server if logged in, or from local IndexedDB if guest
   useEffect(() => {
-    if (!user) {
+    if (!user && !isGuest) {
       setDocuments([]);
       setCurrentDocId(null);
       setAnnotations([]);
@@ -86,14 +100,13 @@ export function App() {
     async function loadDocs() {
       setLoadingDocs(true);
       try {
-        const docs = await getDocuments();
+        const docs = user ? await getDocuments() : await getLocalDocuments();
         setDocuments(docs);
         if (docs.length > 0) {
           setCurrentDocId(docs[0].id);
           setCurrentPage(docs[0].last_page || 1);
         } else {
           setCurrentDocId(null);
-          setLibraryOpen(true);
         }
       } catch (err) {
         console.error('Error fetching documents:', err);
@@ -103,20 +116,20 @@ export function App() {
     }
 
     loadDocs();
-  }, [user]);
+  }, [user, isGuest]);
 
   const refreshDocuments = useCallback(async () => {
     try {
-      const docs = await getDocuments();
+      const docs = user ? await getDocuments() : await getLocalDocuments();
       setDocuments(docs);
     } catch (err) {
       console.error('Error refreshing documents:', err);
     }
-  }, []);
+  }, [user]);
 
-  // When active document changes, fetch its file blob with auth header
+  // When active document changes, load its PDF blob
   useEffect(() => {
-    if (!currentDocId || !user) {
+    if (!currentDocId || (!user && !isGuest)) {
       setPdfBlobUrl(null);
       return;
     }
@@ -126,8 +139,16 @@ export function App() {
 
     async function loadPdfBlob() {
       try {
-        const blob = await fetchDocumentFileBlob(currentDocId!);
+        const blob = user
+          ? await fetchDocumentFileBlob(currentDocId!)
+          : await getLocalDocumentBlob(currentDocId!);
+
         if (isCancelled) return;
+        if (!blob) {
+          console.warn('PDF blob not found for document:', currentDocId);
+          return;
+        }
+
         createdUrl = URL.createObjectURL(blob);
         setPdfBlobUrl(createdUrl);
       } catch (err) {
@@ -143,11 +164,11 @@ export function App() {
         URL.revokeObjectURL(createdUrl);
       }
     };
-  }, [currentDocId, user]);
+  }, [currentDocId, user, isGuest]);
 
   // When active document changes, fetch its annotations and notes
   useEffect(() => {
-    if (!currentDocId || !user) {
+    if (!currentDocId || (!user && !isGuest)) {
       setAnnotations([]);
       setNotesContent('');
       return;
@@ -156,8 +177,8 @@ export function App() {
     async function loadDocDetails() {
       try {
         const [anns, notes] = await Promise.all([
-          getAnnotations(currentDocId!),
-          getDocumentNotes(currentDocId!),
+          user ? getAnnotations(currentDocId!) : getLocalAnnotations(currentDocId!),
+          user ? getDocumentNotes(currentDocId!) : getLocalNotes(currentDocId!),
         ]);
 
         const parsed: ParsedAnnotation[] = anns.map((a) => {
@@ -187,7 +208,7 @@ export function App() {
     }
 
     loadDocDetails();
-  }, [currentDocId, user]);
+  }, [currentDocId, user, isGuest]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -205,18 +226,29 @@ export function App() {
   const handlePageChange = useCallback(
     async (pageNum: number) => {
       setCurrentPage(pageNum);
-      if (currentDocId && user) {
+      if (!currentDocId) return;
+
+      if (user) {
         try {
           const updated = await updateProgress(currentDocId, pageNum);
           setDocuments((prev) =>
             prev.map((d) => (d.id === currentDocId ? { ...d, last_page: updated.last_page, progress_percent: updated.progress_percent } : d))
           );
         } catch (e) {
-          console.warn('Could not sync reading progress:', e);
+          console.warn('Could not sync reading progress to server:', e);
+        }
+      } else if (isGuest) {
+        try {
+          const updated = await updateLocalProgress(currentDocId, pageNum);
+          setDocuments((prev) =>
+            prev.map((d) => (d.id === currentDocId ? { ...d, last_page: updated.last_page, progress_percent: updated.progress_percent } : d))
+          );
+        } catch (e) {
+          console.warn('Could not sync reading progress locally:', e);
         }
       }
     },
-    [currentDocId, user]
+    [currentDocId, user, isGuest]
   );
 
   // Jump to specific page
@@ -277,13 +309,17 @@ export function App() {
     if (!currentDocId) return;
 
     try {
-      const created = await createAnnotation(currentDocId, {
+      const annotationPayload = {
         page_number: data.pageNumber,
         color: data.color,
         selected_text: data.selectedText,
         rects_json: JSON.stringify(data.rects),
         comment_text: data.commentText,
-      });
+      };
+
+      const created = user
+        ? await createAnnotation(currentDocId, annotationPayload)
+        : await saveLocalAnnotation(currentDocId, annotationPayload);
 
       const parsed: ParsedAnnotation = {
         ...created,
@@ -304,7 +340,11 @@ export function App() {
   // Delete Annotation
   const handleDeleteAnnotation = async (id: string) => {
     try {
-      await deleteAnnotation(id);
+      if (user) {
+        await deleteAnnotation(id);
+      } else {
+        await deleteLocalAnnotation(id);
+      }
       setAnnotations((prev) => prev.filter((a) => a.id !== id));
     } catch (e) {
       console.error('Failed to delete annotation:', e);
@@ -315,7 +355,10 @@ export function App() {
   const handleSaveNotes = async (content: string) => {
     if (!currentDocId) return;
     try {
-      const updated = await updateDocumentNotes(currentDocId, content);
+      const updated = user
+        ? await updateDocumentNotes(currentDocId, content)
+        : await saveLocalNotes(currentDocId, content);
+
       setNotesContent(updated.content);
     } catch (e) {
       console.error('Failed to save notes:', e);
@@ -332,16 +375,52 @@ export function App() {
 
   // Upload New PDF
   const handleUploadDocument = async (file: File) => {
-    const newDoc = await uploadDocument(file);
-    setDocuments((prev) => [newDoc, ...prev]);
-    setCurrentDocId(newDoc.id);
-    setCurrentPage(1);
-    setTotalPages(newDoc.page_count);
+    if (user) {
+      const newDoc = await uploadDocument(file);
+      setDocuments((prev) => [newDoc, ...prev]);
+      setCurrentDocId(newDoc.id);
+      setCurrentPage(1);
+      setTotalPages(newDoc.page_count);
+    } else {
+      // Client-side page count extraction using PDF.js without sending to any backend
+      let pageCount = 1;
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const doc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        pageCount = doc.numPages;
+      } catch (e) {
+        console.warn('Could not extract page count locally:', e);
+      }
+
+      const newDoc = await saveLocalDocument(file, pageCount);
+      setDocuments((prev) => [newDoc, ...prev]);
+      setCurrentDocId(newDoc.id);
+      setCurrentPage(1);
+      setTotalPages(newDoc.page_count);
+
+      // Automatically chunk the document in the background for local AI search
+      chunkLocalDocument(newDoc.id)
+        .then((chunks) => {
+          setDocuments((prev) =>
+            prev.map((d) =>
+              d.id === newDoc.id
+                ? { ...d, is_chunked: true, chunk_count: chunks.length }
+                : d
+            )
+          );
+        })
+        .catch((err) => console.warn('Background client chunking failed:', err));
+    }
   };
 
   // Delete Document
   const handleDeleteDocument = async (id: string) => {
-    await deleteDocument(id);
+    if (user) {
+      await deleteDocument(id);
+    } else {
+      await deleteLocalDocument(id);
+    }
+
     setDocuments((prev) => prev.filter((d) => d.id !== id));
     if (currentDocId === id) {
       const remaining = documents.filter((d) => d.id !== id);
@@ -349,7 +428,6 @@ export function App() {
         setCurrentDocId(remaining[0].id);
       } else {
         setCurrentDocId(null);
-        setLibraryOpen(true);
       }
     }
   };
@@ -358,7 +436,7 @@ export function App() {
     return (
       <div className="h-screen w-screen flex flex-col items-center justify-center gap-3 bg-gray-50 dark:bg-gray-950 text-indigo-600">
         <Loader2 className="w-8 h-8 animate-spin" />
-        <span className="text-xs font-semibold text-gray-500">Checking authentication...</span>
+        <span className="text-xs font-semibold text-gray-500">Connecting to Research Reader...</span>
       </div>
     );
   }
@@ -452,24 +530,15 @@ export function App() {
             <p className="text-xs text-gray-500 max-w-sm mt-1 mb-4">
               {user
                 ? 'Upload a scientific publication, pre-print, or book to start reading and taking notes.'
-                : 'Sign in to access your private library, highlights, and annotations.'}
+                : 'Upload any scientific publication, pre-print, or book to highlight, annotate, and take notes. All files are stored privately on your device.'}
             </p>
-            {user ? (
-              <button
-                onClick={() => setLibraryOpen(true)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-2 shadow-md transition"
-              >
-                <UploadCloud className="w-4 h-4" />
-                <span>Upload a PDF Paper</span>
-              </button>
-            ) : (
-              <button
-                onClick={() => setAuthModalOpen(true)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-2 shadow-md transition"
-              >
-                <span>Sign In or Sign Up</span>
-              </button>
-            )}
+            <button
+              onClick={() => setLibraryOpen(true)}
+              className="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-2 shadow-md transition"
+            >
+              <UploadCloud className="w-4 h-4" />
+              <span>Upload or Choose a PDF</span>
+            </button>
           </div>
         )}
       </div>
@@ -490,7 +559,7 @@ export function App() {
 
       {/* Library & Upload Modal */}
       <DocumentLibraryModal
-        isOpen={libraryOpen && Boolean(user)}
+        isOpen={libraryOpen}
         documents={documents}
         currentDocId={currentDocId}
         onSelectDocument={(id) => {
@@ -507,10 +576,10 @@ export function App() {
         onClose={() => setLibraryOpen(false)}
       />
 
-      {/* Authentication Modal */}
+      {/* Authentication Modal - Only shown when explicitly requested */}
       <AuthModal
-        isOpen={!user || authModalOpen}
-        canClose={Boolean(user)}
+        isOpen={authModalOpen}
+        canClose={true}
         onClose={() => setAuthModalOpen(false)}
       />
 
