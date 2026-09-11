@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   MessageSquare,
   Sparkles,
@@ -35,6 +35,31 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
   const [showCommentInput, setShowCommentInput] = useState(false);
   const [comment, setComment] = useState('');
   const [selectedColor, setSelectedColor] = useState(PALETTE[0].hex);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handlePointerDown = (e: MouseEvent | TouchEvent) => {
+      if (toolbarRef.current && !toolbarRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('touchstart', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [onClose]);
 
   const handleGoogleSearch = () => {
     const query = encodeURIComponent(selectedText.trim());
@@ -49,6 +74,7 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
 
   return (
     <div
+      ref={toolbarRef}
       className="fixed z-50 transform -translate-x-1/2 flex flex-col bg-white dark:bg-gray-900 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 p-2 animate-in fade-in zoom-in-95 duration-150"
       style={{
         top: `${Math.max(10, position.top - (showCommentInput ? 160 : 60))}px`,

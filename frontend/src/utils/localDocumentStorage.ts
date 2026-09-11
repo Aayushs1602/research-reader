@@ -486,6 +486,36 @@ export async function deleteLocalAnnotation(annotationId: string): Promise<void>
 }
 
 /**
+ * Update an annotation locally
+ */
+export async function updateLocalAnnotation(
+  annotationId: string,
+  data: { color?: string; comment_text?: string }
+): Promise<Annotation> {
+  const db = await openLocalDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('annotations', 'readwrite');
+    const store = tx.objectStore('annotations');
+    const req = store.get(annotationId);
+
+    req.onsuccess = () => {
+      const ann: Annotation = req.result;
+      if (!ann) {
+        reject(new Error('Annotation not found'));
+        return;
+      }
+      if (data.color !== undefined) ann.color = data.color;
+      if (data.comment_text !== undefined) ann.comment_text = data.comment_text;
+      const putReq = store.put(ann);
+      putReq.onsuccess = () => resolve(ann);
+      putReq.onerror = () => reject(putReq.error || new Error('Failed to update local annotation'));
+    };
+
+    req.onerror = () => reject(req.error || new Error('Failed to get local annotation'));
+  });
+}
+
+/**
  * Get markdown notes for a document
  */
 export async function getLocalNotes(docId: string): Promise<DocumentNote> {

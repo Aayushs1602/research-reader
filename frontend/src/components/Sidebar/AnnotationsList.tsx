@@ -127,22 +127,34 @@ export const AnnotationsList: React.FC<AnnotationsListProps> = ({
                   rows={2}
                   value={editCommentText}
                   onChange={(e) => setEditCommentText(e.target.value)}
-                  placeholder="Add or update your note..."
-                  className="w-full text-xs p-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSaveEdit(ann.id);
+                    } else if (e.key === 'Escape') {
+                      setEditingId(null);
+                    }
+                  }}
+                  placeholder="Add or update your note... (Press Enter to save, Shift+Enter for new line)"
+                  className="w-full text-xs p-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none"
                 />
-                <div className="flex justify-end gap-1">
-                  <button
-                    onClick={() => setEditingId(null)}
-                    className="p-1 rounded hover:bg-gray-200 text-gray-500 text-xs flex items-center"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                  <button
-                    onClick={() => handleSaveEdit(ann.id)}
-                    className="px-2 py-0.5 rounded bg-indigo-600 text-white text-xs font-medium flex items-center gap-0.5"
-                  >
-                    <Check className="w-3 h-3" /> Save
-                  </button>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-gray-400">Enter to save</span>
+                  <div className="flex justify-end gap-1">
+                    <button
+                      onClick={() => setEditingId(null)}
+                      className="p-1 rounded hover:bg-gray-200 text-gray-500 text-xs flex items-center"
+                      title="Cancel"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                    <button
+                      onClick={() => handleSaveEdit(ann.id)}
+                      className="px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium flex items-center gap-0.5 transition"
+                    >
+                      <Check className="w-3 h-3" /> Save
+                    </button>
+                  </div>
                 </div>
               </div>
             ) : ann.comment_text ? (

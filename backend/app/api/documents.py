@@ -76,7 +76,7 @@ async def upload_document(
     # Initialize empty Markdown note for this document
     note = DocumentNote(
         document_id=file_id,
-        content=f"# Notes for {file.filename}\n\nStart typing your research notes, summaries, and key takeaways here...",
+        content="",
     )
     db.add(note)
 

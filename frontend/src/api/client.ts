@@ -220,6 +220,19 @@ export async function deleteAnnotation(annotationId: string): Promise<void> {
   if (!res.ok) throw new Error('Failed to delete annotation');
 }
 
+export async function updateAnnotation(
+  annotationId: string,
+  data: { color?: string; comment_text?: string }
+): Promise<Annotation> {
+  const res = await fetch(`${API_BASE}/api/annotations/${annotationId}`, {
+    method: 'PATCH',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error('Failed to update annotation');
+  return res.json();
+}
+
 // --- Notes Endpoints ---
 
 export async function getDocumentNotes(docId: string): Promise<DocumentNote> {

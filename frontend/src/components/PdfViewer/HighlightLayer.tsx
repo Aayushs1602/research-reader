@@ -18,12 +18,13 @@ export const HighlightLayer: React.FC<HighlightLayerProps> = ({
       {annotations.map((ann) => {
         const isActive = activeAnnotationId === ann.id;
         return (
-          <div key={ann.id} id={`pdf-highlight-${ann.id}`} className="contents">
+          <div key={ann.id} data-annotation-id={ann.id} className="contents">
             {ann.rects.map((rect, idx) => {
               const isFirstRect = idx === 0;
               return (
                 <div
                   key={idx}
+                  id={isFirstRect ? `pdf-highlight-${ann.id}` : undefined}
                   title={ann.comment_text ? `Note: ${ann.comment_text}` : ann.selected_text}
                   style={{
                     left: `${rect.x * 100}%`,

@@ -22,7 +22,7 @@ def get_document_notes(
     if not note:
         note = DocumentNote(
             document_id=doc_id,
-            content=f"# Notes for {doc.original_name}\n\nStart typing notes here...",
+            content="",
         )
         db.add(note)
         db.commit()

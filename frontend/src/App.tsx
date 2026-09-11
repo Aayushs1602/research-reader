@@ -17,6 +17,7 @@ import {
   updateProgress,
   getAnnotations,
   createAnnotation,
+  updateAnnotation,
   deleteAnnotation,
   getDocumentNotes,
   updateDocumentNotes,
@@ -30,6 +31,7 @@ import {
   updateLocalProgress,
   getLocalAnnotations,
   saveLocalAnnotation,
+  updateLocalAnnotation,
   deleteLocalAnnotation,
   getLocalNotes,
   saveLocalNotes,
@@ -201,7 +203,9 @@ export function App() {
         });
 
         setAnnotations(parsed);
-        setNotesContent(notes.content || '');
+        const rawContent = notes.content || '';
+        const isLegacyBoilerplate = /^# Notes for .*\n\nStart typing/s.test(rawContent.trim());
+        setNotesContent(isLegacyBoilerplate ? '' : rawContent);
       } catch (e) {
         console.error('Failed to load document annotations/notes:', e);
       }
@@ -257,13 +261,37 @@ export function App() {
     setCurrentPage(pageNum);
   };
 
-  // Jump to highlight (bi-directional link)
+  // Jump to highlight (bi-directional link - vertically centers highlighted text in viewport)
   const handleJumpToAnnotation = (pageNum: number, annotationId: string) => {
-    handleJumpToPage(pageNum);
     setActiveAnnotationId(annotationId);
+    setCurrentPage(pageNum);
+
+    const tryScroll = () => {
+      const el = document.getElementById(`pdf-highlight-${annotationId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return true;
+      }
+      return false;
+    };
+
+    if (!tryScroll()) {
+      const pageEl = document.getElementById(`pdf-page-${pageNum}`);
+      if (pageEl) {
+        pageEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      let attempts = 0;
+      const interval = setInterval(() => {
+        attempts++;
+        if (tryScroll() || attempts > 25) {
+          clearInterval(interval);
+        }
+      }, 80);
+    }
+
     setTimeout(() => {
-      setActiveAnnotationId(null);
-    }, 1500);
+      setActiveAnnotationId((curr) => (curr === annotationId ? null : curr));
+    }, 2500);
   };
 
   // In-document search state change handler
@@ -348,6 +376,22 @@ export function App() {
       setAnnotations((prev) => prev.filter((a) => a.id !== id));
     } catch (e) {
       console.error('Failed to delete annotation:', e);
+    }
+  };
+
+  // Update Annotation Comment / Note
+  const handleUpdateComment = async (id: string, comment: string) => {
+    try {
+      if (user) {
+        await updateAnnotation(id, { comment_text: comment });
+      } else {
+        await updateLocalAnnotation(id, { comment_text: comment });
+      }
+      setAnnotations((prev) =>
+        prev.map((a) => (a.id === id ? { ...a, comment_text: comment } : a))
+      );
+    } catch (e) {
+      console.error('Failed to update annotation comment:', e);
     }
   };
 
@@ -513,10 +557,14 @@ export function App() {
                 onJumpToPage={handleJumpToPage}
                 onJumpToAnnotation={handleJumpToAnnotation}
                 onDeleteAnnotation={handleDeleteAnnotation}
+                onUpdateComment={handleUpdateComment}
                 onSearchInDoc={handleSearchInDoc}
                 onAppendToNotes={(snippet) => {
-                  setNotesContent((prev) => prev + snippet);
-                  handleSaveNotes(notesContent + snippet);
+                  setNotesContent((prev) => {
+                    const updated = prev + snippet;
+                    handleSaveNotes(updated);
+                    return updated;
+                  });
                 }}
               />
             )}
