@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
@@ -13,7 +13,8 @@ import {
   Code,
   Quote,
   Check,
-  Sparkles
+  Sparkles,
+  Loader2,
 } from 'lucide-react';
 import type { ParsedAnnotation } from '../../types';
 
@@ -31,24 +32,96 @@ export const MarkdownNotepad: React.FC<MarkdownNotepadProps> = ({
 }) => {
   const [content, setContent] = useState(initialContent);
   const [isPreview, setIsPreview] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [savedStatus, setSavedStatus] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'unsaved' | 'saving' | 'saved'>('idle');
 
+  const lastSavedContentRef = useRef(initialContent);
+  const contentRef = useRef(content);
+  contentRef.current = content;
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Sync when initialContent changes from outside (e.g. document switch)
   useEffect(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
     setContent(initialContent);
+    lastSavedContentRef.current = initialContent;
+    setSaveStatus('idle');
   }, [initialContent]);
 
-  const handleSave = async () => {
-    setIsSaving(true);
-    try {
-      await onSaveNotes(content);
-      setSavedStatus(true);
-      setTimeout(() => setSavedStatus(false), 2000);
-    } catch (e) {
-      console.error('Failed to save notes:', e);
-    } finally {
-      setIsSaving(false);
+  // Perform save to API / local storage
+  const performSave = useCallback(
+    async (textToSave: string) => {
+      if (textToSave === lastSavedContentRef.current) {
+        setSaveStatus('idle');
+        return;
+      }
+
+      setSaveStatus('saving');
+      try {
+        await onSaveNotes(textToSave);
+        lastSavedContentRef.current = textToSave;
+        setSaveStatus('saved');
+        setTimeout(() => {
+          setSaveStatus((curr) => (curr === 'saved' ? 'idle' : curr));
+        }, 2500);
+      } catch (e) {
+        console.error('Failed to save notes:', e);
+        setSaveStatus('unsaved');
+      }
+    },
+    [onSaveNotes]
+  );
+
+  // Handle content change with debounced auto-save (1s)
+  const handleContentChange = (newContent: string) => {
+    setContent(newContent);
+
+    if (newContent === lastSavedContentRef.current) {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      setSaveStatus('idle');
+      return;
     }
+
+    setSaveStatus('unsaved');
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+    }
+    timerRef.current = setTimeout(() => {
+      performSave(newContent);
+    }, 1000);
+  };
+
+  // Auto-save on blur
+  const handleBlur = () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    if (content !== lastSavedContentRef.current) {
+      performSave(content);
+    }
+  };
+
+  // Flush on unmount if unsaved
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
+      if (contentRef.current !== lastSavedContentRef.current) {
+        onSaveNotes(contentRef.current);
+      }
+    };
+  }, [onSaveNotes]);
+
+  const handleManualSave = () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    performSave(content);
   };
 
   const handleExportMarkdown = () => {
@@ -85,7 +158,7 @@ export const MarkdownNotepad: React.FC<MarkdownNotepadProps> = ({
     const replacement = `${prefix}${selected || 'text'}${suffix}`;
     const newContent = content.substring(0, start) + replacement + content.substring(end);
 
-    setContent(newContent);
+    handleContentChange(newContent);
     setTimeout(() => {
       textarea.focus();
       textarea.setSelectionRange(start + prefix.length, start + prefix.length + (selected.length || 4));
@@ -100,7 +173,7 @@ export const MarkdownNotepad: React.FC<MarkdownNotepadProps> = ({
       if (a.comment_text) snippet += ` — *${a.comment_text}*`;
       snippet += '\n';
     });
-    setContent((prev) => prev + snippet);
+    handleContentChange(content + snippet);
   };
 
   return (
@@ -169,8 +242,33 @@ export const MarkdownNotepad: React.FC<MarkdownNotepadProps> = ({
           )}
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex items-center gap-1">
+        {/* Action Buttons & Save Status */}
+        <div className="flex items-center gap-1.5">
+          {/* Auto-save Status Indicator */}
+          <div className="hidden sm:flex items-center gap-1.5 px-2 text-xs">
+            {saveStatus === 'saving' && (
+              <span className="flex items-center gap-1 text-indigo-500 font-medium">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                <span>Saving...</span>
+              </span>
+            )}
+            {saveStatus === 'saved' && (
+              <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium">
+                <Check className="w-3 h-3" />
+                <span>Saved</span>
+              </span>
+            )}
+            {saveStatus === 'unsaved' && (
+              <span className="flex items-center gap-1 text-amber-500 dark:text-amber-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                <span>Unsaved</span>
+              </span>
+            )}
+            {saveStatus === 'idle' && (
+              <span className="text-gray-400 text-[11px]">Auto-save on</span>
+            )}
+          </div>
+
           {annotations.length > 0 && !isPreview && (
             <button
               onClick={importHighlightsIntoNotes}
@@ -192,13 +290,19 @@ export const MarkdownNotepad: React.FC<MarkdownNotepadProps> = ({
           </button>
 
           <button
-            onClick={handleSave}
-            disabled={isSaving}
+            onClick={handleManualSave}
+            disabled={saveStatus === 'saving'}
             className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1 transition shadow-sm disabled:opacity-50"
             title="Save notes"
           >
-            {savedStatus ? <Check className="w-3.5 h-3.5 text-green-300" /> : <Save className="w-3.5 h-3.5" />}
-            <span>{savedStatus ? 'Saved!' : 'Save'}</span>
+            {saveStatus === 'saved' ? (
+              <Check className="w-3.5 h-3.5 text-green-300" />
+            ) : saveStatus === 'saving' ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Save className="w-3.5 h-3.5" />
+            )}
+            <span>{saveStatus === 'saved' ? 'Saved' : saveStatus === 'saving' ? 'Saving...' : 'Save'}</span>
           </button>
         </div>
       </div>
@@ -207,15 +311,22 @@ export const MarkdownNotepad: React.FC<MarkdownNotepadProps> = ({
       <div className="flex-1 overflow-y-auto p-4">
         {isPreview ? (
           <div className="prose prose-sm dark:prose-invert max-w-none text-gray-800 dark:text-gray-200">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{content || '_No notes yet. Click Edit to write._'}</ReactMarkdown>
+            {content.trim() ? (
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+            ) : (
+              <div className="text-gray-400 dark:text-gray-500 italic text-sm py-4">
+                No notes yet. Switch to Edit mode to start writing notes...
+              </div>
+            )}
           </div>
         ) : (
           <textarea
             id="notes-editor"
             value={content}
-            onChange={(e) => setContent(e.target.value)}
+            onChange={(e) => handleContentChange(e.target.value)}
+            onBlur={handleBlur}
             placeholder="Write your research notes, critique, synthesis, and takeaways in Markdown..."
-            className="w-full h-full min-h-[400px] resize-none bg-transparent border-none focus:outline-none font-mono text-sm leading-relaxed text-gray-900 dark:text-gray-100"
+            className="w-full h-full min-h-[400px] resize-none bg-transparent border-none focus:outline-none font-mono text-sm leading-relaxed text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500"
           />
         )}
       </div>

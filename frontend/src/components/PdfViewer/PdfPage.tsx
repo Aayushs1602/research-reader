@@ -168,6 +168,22 @@ export const PdfPage: React.FC<PdfPageProps> = ({
     }
   }, [isActiveSearchPage, activeSearchMatchIndex, searchMatches]);
 
+  // Smooth scroll active highlight into center of viewport
+  useEffect(() => {
+    if (rendered && activeAnnotationId) {
+      const hasAnnotation = annotations.some((a) => a.id === activeAnnotationId);
+      if (hasAnnotation) {
+        const timer = setTimeout(() => {
+          const activeEl = document.getElementById(`pdf-highlight-${activeAnnotationId}`);
+          if (activeEl) {
+            activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 50);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [rendered, activeAnnotationId, annotations]);
+
   return (
     <div
       ref={containerRef}

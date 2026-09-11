@@ -158,6 +158,24 @@ export async function getLocalDocumentBlob(docId: string): Promise<Blob | null> 
 }
 
 /**
+ * Cache binary PDF blob in browser IndexedDB (used for offline & cloud persistence cache)
+ */
+export async function saveCachedPdfBlob(docId: string, blob: Blob, name: string): Promise<void> {
+  const db = await openLocalDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('pdf_files', 'readwrite');
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error || new Error('Failed to cache PDF blob'));
+    tx.objectStore('pdf_files').put({
+      id: docId,
+      blob,
+      name,
+      updated_at: new Date().toISOString(),
+    });
+  });
+}
+
+/**
  * Delete a local document and all associated files, annotations, notes, and chunks
  */
 export async function deleteLocalDocument(docId: string): Promise<void> {
@@ -482,6 +500,36 @@ export async function deleteLocalAnnotation(annotationId: string): Promise<void>
 
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error || new Error('Failed to delete local annotation'));
+  });
+}
+
+/**
+ * Update an annotation locally
+ */
+export async function updateLocalAnnotation(
+  annotationId: string,
+  data: { color?: string; comment_text?: string }
+): Promise<Annotation> {
+  const db = await openLocalDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('annotations', 'readwrite');
+    const store = tx.objectStore('annotations');
+    const req = store.get(annotationId);
+
+    req.onsuccess = () => {
+      const ann: Annotation = req.result;
+      if (!ann) {
+        reject(new Error('Annotation not found'));
+        return;
+      }
+      if (data.color !== undefined) ann.color = data.color;
+      if (data.comment_text !== undefined) ann.comment_text = data.comment_text;
+      const putReq = store.put(ann);
+      putReq.onsuccess = () => resolve(ann);
+      putReq.onerror = () => reject(putReq.error || new Error('Failed to update local annotation'));
+    };
+
+    req.onerror = () => reject(req.error || new Error('Failed to get local annotation'));
   });
 }
 

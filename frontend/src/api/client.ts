@@ -143,6 +143,21 @@ export async function uploadDocument(file: File): Promise<DocumentMeta> {
   return res.json();
 }
 
+export async function reuploadDocumentFile(id: string, file: File): Promise<DocumentMeta> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await fetch(`${API_BASE}/api/documents/${id}/reupload`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to re-upload document file' }));
+    throw new Error(err.detail || 'Failed to re-upload document file');
+  }
+  return res.json();
+}
+
 export async function getDocument(id: string): Promise<DocumentMeta> {
   const res = await fetch(`${API_BASE}/api/documents/${id}`, {
     headers: getAuthHeaders(),
@@ -218,6 +233,19 @@ export async function deleteAnnotation(annotationId: string): Promise<void> {
     headers: getAuthHeaders(),
   });
   if (!res.ok) throw new Error('Failed to delete annotation');
+}
+
+export async function updateAnnotation(
+  annotationId: string,
+  data: { color?: string; comment_text?: string }
+): Promise<Annotation> {
+  const res = await fetch(`${API_BASE}/api/annotations/${annotationId}`, {
+    method: 'PATCH',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error('Failed to update annotation');
+  return res.json();
 }
 
 // --- Notes Endpoints ---
