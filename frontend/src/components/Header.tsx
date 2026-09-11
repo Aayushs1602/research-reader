@@ -280,6 +280,7 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             onClick={onOpenAuth}
             className="px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5 shadow-sm transition"
+            title="Sign in or create account to sync papers across devices"
           >
             <UserIcon className="w-3.5 h-3.5" />
             <span>Sign In</span>

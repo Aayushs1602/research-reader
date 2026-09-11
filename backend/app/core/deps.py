@@ -39,6 +39,21 @@ def get_current_user(
 
     return user
 
+def get_optional_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+):
+    """Retrieve currently authenticated user from Bearer token, or None if not authenticated."""
+    if not credentials:
+        return None
+
+    payload = decode_access_token(credentials.credentials)
+    if not payload or "sub" not in payload:
+        return None
+
+    user_id = payload["sub"]
+    return db.query(User).filter(User.id == user_id).first()
+
 def is_user_admin(user: User, db: Session = None) -> bool:
     """Returns True if user has is_admin=True or user's email is listed in ADMIN_EMAILS."""
     if getattr(user, "is_admin", False):

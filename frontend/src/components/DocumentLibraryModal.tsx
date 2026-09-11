@@ -10,9 +10,13 @@ import {
   CheckCircle2,
   Layers,
   Sparkles,
+  HardDrive,
+  ShieldCheck,
 } from 'lucide-react';
 import type { DocumentMeta } from '../types';
 import { chunkUserDocument } from '../api/client';
+import { chunkLocalDocument } from '../utils/localDocumentStorage';
+import { useAuth } from '../context/AuthContext';
 
 interface DocumentLibraryModalProps {
   isOpen: boolean;
@@ -35,6 +39,7 @@ export const DocumentLibraryModal: React.FC<DocumentLibraryModalProps> = ({
   onRefreshDocuments,
   onClose,
 }) => {
+  const { isGuest } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -72,7 +77,11 @@ export const DocumentLibraryModal: React.FC<DocumentLibraryModalProps> = ({
     e.stopPropagation();
     setChunkingDocId(docId);
     try {
-      await chunkUserDocument(docId);
+      if (isGuest) {
+        await chunkLocalDocument(docId);
+      } else {
+        await chunkUserDocument(docId);
+      }
       if (onRefreshDocuments) onRefreshDocuments();
     } catch (err: any) {
       alert(`Failed to process document: ${err?.message || err}`);
@@ -92,14 +101,46 @@ export const DocumentLibraryModal: React.FC<DocumentLibraryModalProps> = ({
             <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500">
               {documents.length} papers
             </span>
+            {isGuest && (
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 flex items-center gap-1">
+                <HardDrive className="w-3 h-3" />
+                <span>Local Storage</span>
+              </span>
+            )}
           </div>
-          <button
-            onClick={onClose}
-            className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {isGuest && documents.length > 0 && (
+              <button
+                type="button"
+                onClick={async () => {
+                  if (confirm(`Delete all ${documents.length} locally saved papers and their notes from this browser?`)) {
+                    for (const doc of documents) {
+                      await onDeleteDocument(doc.id);
+                    }
+                  }
+                }}
+                className="text-[11px] font-semibold text-rose-500 hover:text-rose-700 dark:hover:text-rose-400 px-2.5 py-1 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-transparent hover:border-rose-200 dark:hover:border-rose-900/60 transition cursor-pointer"
+                title="Delete all locally stored papers from this browser"
+              >
+                Clear All Local Papers
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
+
+        {/* Local Storage Privacy Banner */}
+        {isGuest && (
+          <div className="px-4 py-2 bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-900/60 flex items-center gap-2 text-xs text-amber-800 dark:text-amber-300">
+            <ShieldCheck className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+            <span>Running locally. Uploaded PDFs, annotations, and notes are saved directly to this browser and never uploaded to any server.</span>
+          </div>
+        )}
 
         {/* Upload Zone */}
         <div className="p-4 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50">
@@ -224,7 +265,7 @@ export const DocumentLibraryModal: React.FC<DocumentLibraryModalProps> = ({
                         </span>
                       </div>
 
-                      {/* AI Chunking Status Badge */}
+                      {/* Status Badge */}
                       <div className="flex items-center gap-2 mt-2">
                         {doc.is_chunked ? (
                           <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
@@ -234,6 +275,11 @@ export const DocumentLibraryModal: React.FC<DocumentLibraryModalProps> = ({
                         ) : (
                           <span className="text-[10px] text-gray-400 px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
                             Not indexed for AI
+                          </span>
+                        )}
+                        {isGuest && (
+                          <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
+                            • Local device
                           </span>
                         )}
                       </div>

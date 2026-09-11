@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { BookOpen, LogIn, UserPlus, Loader2, AlertCircle, X } from 'lucide-react';
+import { BookOpen, LogIn, UserPlus, Loader2, AlertCircle, X, HardDrive, ShieldCheck } from 'lucide-react';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -13,7 +13,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onClose,
   canClose = false,
 }) => {
-  const { login, signup } = useAuth();
+  const { login, signup, continueAsGuest } = useAuth();
   const [mode, setMode] = useState<'login' | 'signup'>('login');
 
   const [email, setEmail] = useState('');
@@ -46,6 +46,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
+  const handleGuestContinue = () => {
+    continueAsGuest();
+    if (onClose) onClose();
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
       <div className="w-full max-w-md bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
@@ -54,7 +59,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           {canClose && onClose && (
             <button
               onClick={onClose}
-              className="absolute top-4 right-4 p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+              className="absolute top-4 right-4 p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition"
+              title="Close modal"
             >
               <X className="w-5 h-5" />
             </button>
@@ -182,6 +188,33 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </>
             )}
           </button>
+
+          {/* Divider: Local / Guest Mode */}
+          <div className="relative my-4">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-200 dark:border-gray-800" />
+            </div>
+            <div className="relative flex justify-center text-xs">
+              <span className="bg-white dark:bg-gray-900 px-3 text-gray-400 font-medium">
+                or use without account
+              </span>
+            </div>
+          </div>
+
+          {/* Continue as Guest Button */}
+          <button
+            type="button"
+            onClick={handleGuestContinue}
+            className="w-full py-2.5 rounded-xl text-xs font-semibold bg-gray-100 dark:bg-gray-800 hover:bg-amber-50 dark:hover:bg-amber-950/40 text-gray-800 dark:text-gray-200 hover:text-amber-700 dark:hover:text-amber-300 border border-gray-200 dark:border-gray-700 hover:border-amber-300 dark:hover:border-amber-800 flex items-center justify-center gap-2 transition shadow-sm"
+          >
+            <HardDrive className="w-4 h-4 text-amber-500" />
+            <span>Continue as Guest (Local Storage)</span>
+          </button>
+
+          <div className="flex items-center justify-center gap-1.5 text-[11px] text-gray-400">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+            <span>Zero server storage. Papers and notes stay in your browser.</span>
+          </div>
         </form>
       </div>
     </div>
