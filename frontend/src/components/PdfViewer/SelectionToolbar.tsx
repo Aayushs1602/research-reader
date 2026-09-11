@@ -4,14 +4,15 @@ import {
   Sparkles,
   Globe,
   Check,
-  X
+  X,
+  BookMarked,
 } from 'lucide-react';
 
 interface SelectionToolbarProps {
   position: { top: number; left: number };
   selectedText: string;
   onHighlight: (color: string, comment?: string) => void;
-  onAIDeepDive: (text: string) => void;
+  onAIDeepDive: (text: string, mode?: string) => void;
   onClose: () => void;
 }
 
@@ -106,10 +107,23 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
           <span>Google</span>
         </button>
 
+        {/* In-Paper Contextual Definition (USP) */}
+        <button
+          onClick={() => {
+            onAIDeepDive(selectedText, 'define');
+            onClose();
+          }}
+          className="px-2 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900 border border-amber-200 dark:border-amber-800 shadow-sm transition"
+          title={`Find authors' in-paper definition for "${selectedText.slice(0, 30)}..."`}
+        >
+          <BookMarked className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+          <span>Define</span>
+        </button>
+
         {/* AI Deep Dive (USP 2) */}
         <button
           onClick={() => {
-            onAIDeepDive(selectedText);
+            onAIDeepDive(selectedText, 'explain');
             onClose();
           }}
           className="px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white shadow-sm transition"

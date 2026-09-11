@@ -118,6 +118,8 @@ class DocumentNoteResponse(BaseModel):
 # --- AI & Deep Dive Schemas ---
 class AIDeepDiveRequest(BaseModel):
     selected_text: str
+    document_id: Optional[str] = None
+    current_page: Optional[int] = None
     context: Optional[str] = None
     mode: str = "explain"
 
@@ -126,3 +128,54 @@ class AIDeepDiveResponse(BaseModel):
     explanation: str
     google_search_url: str
     suggested_followups: List[str] = []
+    provider_used: Optional[str] = None
+    model_used: Optional[str] = None
+
+class CitedChunk(BaseModel):
+    chunk_id: str
+    page_number: int
+    chunk_index: int
+    snippet: str
+    score: float = 0.0
+
+class AIChatRequest(BaseModel):
+    document_id: Optional[str] = None
+    question: str
+    current_page: Optional[int] = None
+    history: Optional[List[Dict[str, str]]] = []
+    mode: str = "qa"  # qa, summarize, critique
+
+class AIChatResponse(BaseModel):
+    answer: str
+    cited_chunks: List[CitedChunk] = []
+    suggested_followups: List[str] = []
+    provider_used: str = "ollama"
+    model_used: str = "default"
+
+class AISummaryRequest(BaseModel):
+    document_id: str
+    mode: str = "executive"  # executive, methodology, takeaways
+
+class AITestConnectionRequest(BaseModel):
+    provider: str
+    api_key: Optional[str] = None
+    model: Optional[str] = None
+    ollama_url: Optional[str] = None
+
+class AITestConnectionResponse(BaseModel):
+    success: bool
+    provider: str
+    message: str
+    models: Optional[List[str]] = None
+    key_source: Optional[str] = None
+
+class AIProvidersResponse(BaseModel):
+    environment: str = "prod"  # 'prod' (default) or 'local'
+    ollama_available: bool
+    ollama_models: List[str] = []
+    supported_cloud_providers: List[str] = ["gemini", "openai", "anthropic", "groq", "deepseek"]
+    default_provider: str = "gemini"
+    default_model: str = "gemini-1.5-flash"
+    server_configured_providers: List[str] = []
+    show_ai_reasons: bool = False
+

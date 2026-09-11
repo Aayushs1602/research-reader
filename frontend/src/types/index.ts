@@ -55,11 +55,58 @@ export interface SearchMatch {
   contextText: string;
 }
 
+export type AIProvider = 'ollama' | 'gemini' | 'openai' | 'anthropic' | 'groq' | 'deepseek';
+
+export interface AISettings {
+  provider: AIProvider;
+  apiKey: string;
+  model: string;
+  ollamaUrl: string;
+}
+
+export interface CitedChunk {
+  chunk_id: string;
+  page_number: number;
+  chunk_index: number;
+  snippet: string;
+  score: number;
+}
+
+export interface AIChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  cited_chunks?: CitedChunk[];
+  suggested_followups?: string[];
+  timestamp: string;
+}
+
 export interface AIDeepDiveResponse {
   query: string;
   explanation: string;
   google_search_url: string;
   suggested_followups: string[];
+  provider_used?: string;
+  model_used?: string;
+}
+
+export interface AIChatResponse {
+  answer: string;
+  cited_chunks: CitedChunk[];
+  suggested_followups: string[];
+  provider_used: string;
+  model_used: string;
+}
+
+export interface AIProvidersInfo {
+  environment?: 'prod' | 'local';
+  ollama_available: boolean;
+  ollama_models: string[];
+  supported_cloud_providers: string[];
+  default_provider: string;
+  default_model: string;
+  server_configured_providers?: string[];
+  show_ai_reasons?: boolean;
 }
 
 export interface User {

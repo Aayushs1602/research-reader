@@ -26,7 +26,7 @@ interface PdfViewerProps {
     rects: NormalizedRect[];
     commentText?: string;
   }) => void;
-  onAIDeepDive: (text: string) => void;
+  onAIDeepDive: (text: string, mode?: string) => void;
   onPageChange: (pageNumber: number) => void;
   onOutlineLoaded: (outline: TOCItem[]) => void;
   onTotalPagesLoaded: (totalPages: number) => void;

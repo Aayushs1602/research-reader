@@ -19,7 +19,7 @@ from app.schemas.schemas import (
 )
 from app.core.config import STORAGE_DIR
 from app.core.deps import get_current_user
-from app.services.chunking import chunk_document
+from app.services.chunking import chunk_document, ensure_document_chunked
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
@@ -82,6 +82,14 @@ async def upload_document(
 
     db.commit()
     db.refresh(doc)
+
+    # Automatically chunk the uploaded document for instant AI readiness
+    try:
+        chunk_document(db, doc)
+    except Exception as e:
+        # Don't fail upload if chunking encounters an issue
+        pass
+
     return serialize_doc(doc, db)
 
 @router.get("", response_model=List[DocumentResponse])
@@ -226,6 +234,8 @@ def search_user_document_chunks(
     doc = db.query(Document).filter(Document.id == doc_id, Document.user_id == current_user.id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found.")
+
+    ensure_document_chunked(db, doc)
 
     query_text = (data.get("query") or "").strip().lower()
     top_k = min(20, max(1, int(data.get("top_k", 5))))

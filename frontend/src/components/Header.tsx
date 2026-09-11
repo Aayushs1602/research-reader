@@ -13,6 +13,7 @@ import {
   User as UserIcon,
   ChevronDown,
   Database,
+  Sparkles,
 } from 'lucide-react';
 import type { DocumentMeta, ReadingTheme } from '../types';
 import { ThemeToggle } from './common/ThemeToggle';
@@ -36,6 +37,7 @@ interface HeaderProps {
   onOpenLibrary: () => void;
   onOpenAuth: () => void;
   onOpenAdmin: () => void;
+  onOpenAISettings?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -56,6 +58,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenLibrary,
   onOpenAuth,
   onOpenAdmin,
+  onOpenAISettings,
 }) => {
   const { user, logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -180,6 +183,18 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         )}
 
+        {/* AI Model & Keys Settings Trigger */}
+        {onOpenAISettings && (
+          <button
+            onClick={onOpenAISettings}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-purple-50 dark:bg-purple-950/60 hover:bg-purple-100 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 transition"
+            title="Configure AI Engine & API Keys (Ollama / Cloud)"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+            <span className="hidden sm:inline">AI Settings</span>
+          </button>
+        )}
+
         <ThemeToggle theme={theme} onChange={onThemeChange} />
 
         <button
@@ -234,6 +249,18 @@ export const Header: React.FC<HeaderProps> = ({
                   >
                     <Database className="w-3.5 h-3.5 text-emerald-500" />
                     <span>Admin & RAG Hub</span>
+                  </button>
+                )}
+                {onOpenAISettings && (
+                  <button
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onOpenAISettings();
+                    }}
+                    className="w-full text-left px-3 py-2 text-xs font-medium text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/40 rounded-lg flex items-center gap-2 transition mt-1"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-purple-500" />
+                    <span>AI Engine & Keys</span>
                   </button>
                 )}
                 <button

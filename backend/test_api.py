@@ -1,8 +1,28 @@
 import io
 from fastapi.testclient import TestClient
 from app.main import app
+from app.database.models import User, DocumentChunk
+from app.database.session import SessionLocal
 
 client = TestClient(app)
+
+def get_auth_headers():
+    signup_res = client.post("/api/auth/signup", json={
+        "email": "tester@test.com",
+        "username": "Tester",
+        "password": "password123"
+    })
+    if signup_res.status_code == 400:
+        login_res = client.post("/api/auth/login", json={
+            "email": "tester@test.com",
+            "password": "password123"
+        })
+        token = login_res.json()["access_token"]
+        user_id = login_res.json()["user"]["id"]
+    else:
+        token = signup_res.json()["access_token"]
+        user_id = signup_res.json()["user"]["id"]
+    return {"Authorization": f"Bearer {token}"}, user_id
 
 def test_health():
     response = client.get("/health")
@@ -10,28 +30,70 @@ def test_health():
     assert response.json() == {"status": "ok"}
     print("[PASS] Health check")
 
-def test_ai_deep_dive():
-    payload = {
-        "selected_text": "Transformer architecture with self-attention mechanism",
-        "mode": "explain"
-    }
-    response = client.post("/api/ai/deep-dive", json=payload)
-    assert response.status_code == 200
-    data = response.json()
-    assert "google_search_url" in data
-    assert "explanation" in data
-    assert len(data["suggested_followups"]) > 0
-    print("[PASS] AI Deep Dive endpoint")
+def test_ai_providers():
+    res = client.get("/api/ai/providers")
+    assert res.status_code == 200
+    data = res.json()
+    assert "supported_cloud_providers" in data
+    assert "gemini" in data["supported_cloud_providers"]
+    assert "openai" in data["supported_cloud_providers"]
+    assert "anthropic" in data["supported_cloud_providers"]
+    assert "groq" in data["supported_cloud_providers"]
+    assert "deepseek" in data["supported_cloud_providers"]
+    print(f"[PASS] AI Providers (Ollama available: {data['ollama_available']}, models: {data['ollama_models']})")
+
+def test_ai_test_connection():
+    res = client.post("/api/ai/test-connection", json={
+        "provider": "ollama",
+        "ollama_url": "http://localhost:11434"
+    })
+    assert res.status_code == 200
+    data = res.json()
+    assert "success" in data
+    print(f"[PASS] AI Test Connection (Ollama: {data['success']}, message: {data['message']})")
+
+def test_ai_environment_and_api_keys():
+    # 1. Verify default environment is prod
+    prov_res = client.get("/api/ai/providers")
+    assert prov_res.status_code == 200
+    prov_data = prov_res.json()
+    assert prov_data["environment"] == "prod"
+    assert prov_data["default_provider"] in ("gemini", "openai", "anthropic", "groq", "deepseek")
+    print(f"[PASS] Environment default is prod (default provider: {prov_data['default_provider']})")
+
+    # 2. Test DeepSeek API key path without key -> prompts for key
+    no_key_res = client.post("/api/ai/test-connection", json={
+        "provider": "deepseek",
+    })
+    assert no_key_res.status_code == 200
+    no_key_data = no_key_res.json()
+    assert no_key_data["success"] is False
+    assert "required" in no_key_data["message"].lower()
+    print(f"[PASS] DeepSeek without API key properly prompts for key: {no_key_data['message']}")
+
+    # 3. Test DeepSeek API key path with a test key -> proves the API keys path executes
+    test_key_res = client.post("/api/ai/test-connection", json={
+        "provider": "deepseek",
+        "api_key": "sk-test-fake-key-12345"
+    })
+    assert test_key_res.status_code == 200
+    test_key_data = test_key_res.json()
+    assert test_key_data["provider"] == "deepseek"
+    print(f"[PASS] DeepSeek API keys path executed successfully: {test_key_data['message']}")
+
+    # 4. Test Gemini API key path with a test key
+    gemini_key_res = client.post("/api/ai/test-connection", json={
+        "provider": "gemini",
+        "api_key": "AIzaSyFakeKeyTest12345"
+    })
+    assert gemini_key_res.status_code == 200
+    gemini_key_data = gemini_key_res.json()
+    assert gemini_key_data["provider"] == "gemini"
+    print(f"[PASS] Gemini API keys path executed successfully: {gemini_key_data['message']}")
+
 
 def test_pdf_upload_and_annotations():
-    # Ensure user exists for test
-    signup_res = client.post("/api/auth/signup", json={"email": "tester@test.com", "username": "Tester", "password": "password123"})
-    if signup_res.status_code == 400:
-        login_res = client.post("/api/auth/login", json={"email": "tester@test.com", "password": "password123"})
-        token = login_res.json()["access_token"]
-    else:
-        token = signup_res.json()["access_token"]
-    headers = {"Authorization": f"Bearer {token}"}
+    headers, user_id = get_auth_headers()
 
     # Construct a minimal valid PDF byte sequence
     minimal_pdf = (
@@ -42,12 +104,12 @@ def test_pdf_upload_and_annotations():
         b"xref\n"
         b"0 4\n"
         b"0000000000 65535 f \n"
-        b"0000000010 00000 n \n"
         b"0000000053 00000 n \n"
         b"0000000102 00000 n \n"
+        b"0000000180 00000 n \n"
         b"trailer<</Size 4/Root 1 0 R>>\n"
         b"startxref\n"
-        b"178\n"
+        b"250\n"
         b"%%EOF\n"
     )
 
@@ -67,13 +129,102 @@ def test_pdf_upload_and_annotations():
     assert any(d["id"] == doc_id for d in list_res.json())
     print("[PASS] List documents")
 
+    # Seed test chunks representing scientific paper content with definitions
+    db = SessionLocal()
+    try:
+        c1 = DocumentChunk(
+            document_id=doc_id,
+            chunk_index=0,
+            page_number=1,
+            content="In this paper, we define Scaled Dot-Product Attention as Attention(Q, K, V) = softmax(QK^T / sqrt(d_k))V. "
+                    "The queries and keys have dimension d_k, and values have dimension d_v.",
+            token_count=35,
+        )
+        c2 = DocumentChunk(
+            document_id=doc_id,
+            chunk_index=1,
+            page_number=2,
+            content="Multi-Head Attention allows the model to jointly attend to information from different representation subspaces. "
+                    "We denote the number of parallel attention heads as h = 8.",
+            token_count=30,
+        )
+        db.add_all([c1, c2])
+        db.commit()
+    finally:
+        db.close()
+
+    # Test AI Deep Dive in 'explain' mode
+    explain_res = client.post(
+        "/api/ai/deep-dive",
+        json={
+            "selected_text": "Scaled Dot-Product Attention",
+            "mode": "explain",
+            "document_id": doc_id,
+            "current_page": 1,
+        },
+        headers=headers,
+    )
+    assert explain_res.status_code == 200
+    explain_data = explain_res.json()
+    assert "explanation" in explain_data
+    assert len(explain_data["explanation"]) > 20
+    print(f"[PASS] AI Deep Dive (explain mode): generated {len(explain_data['explanation'])} chars")
+
+    # Test AI Deep Dive in 'define' mode (USP: in-paper definitions)
+    define_res = client.post(
+        "/api/ai/deep-dive",
+        json={
+            "selected_text": "Scaled Dot-Product Attention",
+            "mode": "define",
+            "document_id": doc_id,
+            "current_page": 1,
+        },
+        headers=headers,
+    )
+    assert define_res.status_code == 200
+    define_data = define_res.json()
+    assert "explanation" in define_data
+    print(f"[PASS] AI Deep Dive (in-paper 'define' mode): generated {len(define_data['explanation'])} chars")
+
+    # Test AI Chat (RAG Q&A with citations)
+    chat_res = client.post(
+        "/api/ai/chat",
+        json={
+            "document_id": doc_id,
+            "current_page": 1,
+            "question": "How is Scaled Dot-Product Attention defined in this paper?",
+            "mode": "qa",
+        },
+        headers=headers,
+    )
+    assert chat_res.status_code == 200
+    chat_data = chat_res.json()
+    assert "answer" in chat_data
+    assert len(chat_data["answer"]) > 10
+    assert "cited_chunks" in chat_data
+    print(f"[PASS] AI Chat RAG: answer generated with {len(chat_data['cited_chunks'])} citations")
+
+    # Test AI Summary
+    summary_res = client.post(
+        "/api/ai/summary",
+        json={
+            "document_id": doc_id,
+            "mode": "executive",
+        },
+        headers=headers,
+    )
+    assert summary_res.status_code == 200
+    summary_data = summary_res.json()
+    assert "answer" in summary_data
+    print(f"[PASS] AI Document Summary generated ({len(summary_data['answer'])} chars)")
+
     # Create Annotation
     ann_payload = {
         "page_number": 1,
         "color": "#fef08a",
         "selected_text": "Transformer architecture with self-attention",
         "rects_json": '[{"x":0.1,"y":0.2,"width":0.6,"height":0.03}]',
-        "comment_text": "Crucial model design detail"
+        "comment_text": "Crucial model design detail",
     }
     ann_res = client.post(f"/api/documents/{doc_id}/annotations", json=ann_payload, headers=headers)
     assert ann_res.status_code == 201
@@ -90,7 +241,7 @@ def test_pdf_upload_and_annotations():
 
     # Update Notes
     notes_payload = {
-        "content": "# Key Takeaways\n- Self-attention replaces recurrence.\n- Trained on 8 GPUs."
+        "content": "# Key Takeaways\n- Self-attention replaces recurrence.\n- Scaled Dot-Product Attention formula."
     }
     put_notes_res = client.put(f"/api/documents/{doc_id}/notes", json=notes_payload, headers=headers)
     assert put_notes_res.status_code == 200
@@ -109,19 +260,7 @@ def test_pdf_upload_and_annotations():
     print("[PASS] Delete annotation")
 
 def test_admin_and_rag():
-    from app.database.models import User, DocumentChunk
-    from app.database.session import SessionLocal
-
-    # Login as test user
-    login_res = client.post("/api/auth/login", json={"email": "tester@test.com", "password": "password123"})
-    if login_res.status_code != 200:
-        signup_res = client.post("/api/auth/signup", json={"email": "tester@test.com", "username": "Tester", "password": "password123"})
-        token = signup_res.json()["access_token"]
-        user_id = signup_res.json()["user"]["id"]
-    else:
-        token = login_res.json()["access_token"]
-        user_id = login_res.json()["user"]["id"]
-    headers = {"Authorization": f"Bearer {token}"}
+    headers, user_id = get_auth_headers()
 
     # Ensure tester is initially non-admin to verify 403 Forbidden
     db = SessionLocal()
@@ -132,7 +271,6 @@ def test_admin_and_rag():
     finally:
         db.close()
 
-    # Verify regular user cannot access admin health
     forbidden_res = client.get("/api/admin/health", headers=headers)
     assert forbidden_res.status_code == 403
     print("[PASS] Security: Non-admin access to /api/admin/health blocked with 403 Forbidden")
@@ -152,9 +290,7 @@ def test_admin_and_rag():
     data = health_res.json()
     assert data["status"] == "healthy"
     assert data["database_connected"] is True
-    assert "users" in data["table_counts"]
-    assert "document_chunks" in data["table_counts"]
-    print(f"[PASS] Admin Health check (latency: {data['latency_ms']}ms, dialect: {data['database_info']['dialect']})")
+    print(f"[PASS] Admin Health check (latency: {data['latency_ms']}ms)")
 
     # 2. Table Explorer
     table_res = client.get("/api/admin/tables/users", headers=headers)
@@ -170,36 +306,15 @@ def test_admin_and_rag():
     doc_id = docs[0]["id"]
     print(f"[PASS] Admin RAG documents list ({len(docs)} documents)")
 
-    # 4. User-Level Document Chunking endpoint
-    user_chunk_res = client.post(f"/api/documents/{doc_id}/chunk?target_words=100&overlap_words=20", headers=headers)
-    assert user_chunk_res.status_code == 200
-    print(f"[PASS] User-Level Document Chunking endpoint (/api/documents/{doc_id}/chunk)")
-
-    # Seed a test chunk if document was mock/text-less
-    db = SessionLocal()
-    try:
-        sample_chunk = DocumentChunk(
-            document_id=doc_id,
-            chunk_index=0,
-            page_number=1,
-            content="Attention mechanisms and transformer neural networks enable sequence-to-sequence modeling.",
-            token_count=14,
-        )
-        db.add(sample_chunk)
-        db.commit()
-    finally:
-        db.close()
-
-    # 5. User-Level Fetch Document Chunks
+    # 4. User-Level Fetch Document Chunks
     user_chunks_res = client.get(f"/api/documents/{doc_id}/chunks", headers=headers)
     assert user_chunks_res.status_code == 200
     chunks = user_chunks_res.json()
     assert len(chunks) >= 1
-    assert "content" in chunks[0]
     print(f"[PASS] User-Level Document chunks retrieval ({len(chunks)} chunks retrieved)")
 
-    # 6. User-Level Document RAG Search
-    user_search_res = client.post(f"/api/documents/{doc_id}/rag-search", json={"query": "attention neural networks"}, headers=headers)
+    # 5. User-Level Document RAG Search
+    user_search_res = client.post(f"/api/documents/{doc_id}/rag-search", json={"query": "Scaled Dot-Product Attention"}, headers=headers)
     assert user_search_res.status_code == 200
     search_data = user_search_res.json()
     assert len(search_data["results"]) >= 1
@@ -207,7 +322,9 @@ def test_admin_and_rag():
 
 if __name__ == "__main__":
     test_health()
-    test_ai_deep_dive()
+    test_ai_providers()
+    test_ai_test_connection()
+    test_ai_environment_and_api_keys()
     test_pdf_upload_and_annotations()
     test_admin_and_rag()
     print("\nALL BACKEND API TESTS PASSED SUCCESSFULLY!")

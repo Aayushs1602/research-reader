@@ -6,6 +6,7 @@ import type { SearchMatch } from '../../types';
 interface SearchBarProps {
   pdfDoc: PDFDocumentProxy | null;
   isOpen: boolean;
+  initialQuery?: string;
   onClose: () => void;
   onJumpToPage: (pageNumber: number) => void;
   onSearchChange?: (data: {
@@ -18,11 +19,12 @@ interface SearchBarProps {
 export const SearchBar: React.FC<SearchBarProps> = ({
   pdfDoc,
   isOpen,
+  initialQuery = '',
   onClose,
   onJumpToPage,
   onSearchChange,
 }) => {
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(initialQuery);
   const [matches, setMatches] = useState<SearchMatch[]>([]);
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
   const [isSearching, setIsSearching] = useState(false);
@@ -39,8 +41,11 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       setMatches([]);
       setCurrentMatchIndex(0);
       onSearchChange?.({ query: '', currentMatch: null, totalMatches: 0 });
+    } else if (initialQuery) {
+      setQuery(initialQuery);
+      handleSearch(initialQuery);
     }
-  }, [isOpen]);
+  }, [isOpen, initialQuery]);
 
   const handleSearch = async (searchTerm: string) => {
     const term = searchTerm.trim().toLowerCase();

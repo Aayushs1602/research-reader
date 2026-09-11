@@ -1,6 +1,6 @@
 import React from 'react';
 import { FileEdit, Highlighter, ListTree, Sparkles } from 'lucide-react';
-import type { ParsedAnnotation, TOCItem } from '../../types';
+import type { ParsedAnnotation, TOCItem, AISettings } from '../../types';
 import { MarkdownNotepad } from './MarkdownNotepad';
 import { AnnotationsList } from './AnnotationsList';
 import { OutlineView } from './OutlineView';
@@ -16,12 +16,18 @@ interface SidebarTabsProps {
   activeAnnotationId: string | null;
   outline: TOCItem[];
   aiQuery: string;
+  aiMode?: string;
+  documentId?: string | null;
+  currentPage?: number;
+  aiSettings?: AISettings;
+  onOpenAISettings?: () => void;
   onSaveNotes: (content: string) => Promise<void>;
   onJumpToPage: (pageNumber: number) => void;
   onJumpToAnnotation: (pageNumber: number, annotationId: string) => void;
   onDeleteAnnotation: (id: string) => void;
   onUpdateComment?: (id: string, comment: string) => void;
   onAppendToNotes: (markdownSnippet: string) => void;
+  onSearchInDoc?: (searchTerm: string) => void;
 }
 
 export const SidebarTabs: React.FC<SidebarTabsProps> = ({
@@ -32,17 +38,23 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
   activeAnnotationId,
   outline,
   aiQuery,
+  aiMode = 'explain',
+  documentId,
+  currentPage,
+  aiSettings,
+  onOpenAISettings,
   onSaveNotes,
   onJumpToPage,
   onJumpToAnnotation,
   onDeleteAnnotation,
   onUpdateComment,
   onAppendToNotes,
+  onSearchInDoc,
 }) => {
   return (
-    <aside className="w-96 md:w-[420px] lg:w-[460px] h-full flex flex-col border-l border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg z-10">
+    <aside className="w-96 md:w-[420px] lg:w-[460px] h-full flex flex-col border-l border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg z-10 min-w-0 overflow-hidden">
       {/* Top Tab Switcher */}
-      <div className="flex items-center border-b border-gray-200 dark:border-gray-800 px-2 pt-2 bg-gray-50/70 dark:bg-gray-900/70">
+      <div className="flex items-center border-b border-gray-200 dark:border-gray-800 px-2 pt-2 bg-gray-50/70 dark:bg-gray-900/70 overflow-x-hidden min-w-0">
         <button
           onClick={() => onChangeTab('notes')}
           className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-t-lg transition border-b-2 ${
@@ -93,12 +105,12 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
           }`}
         >
           <Sparkles className="w-3.5 h-3.5 text-purple-500" />
-          <span>Deep Dive</span>
+          <span>AI Research</span>
         </button>
       </div>
 
       {/* Tab Panels */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {activeTab === 'notes' && (
           <MarkdownNotepad
             initialContent={notesContent}
@@ -128,7 +140,14 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
         {activeTab === 'ai' && (
           <AIDeepDivePanel
             initialQuery={aiQuery}
+            initialMode={aiMode}
+            documentId={documentId}
+            currentPage={currentPage}
             onAppendToNotes={onAppendToNotes}
+            onJumpToPage={onJumpToPage}
+            onSearchInDoc={onSearchInDoc}
+            onOpenSettings={onOpenAISettings}
+            aiSettings={aiSettings}
           />
         )}
       </div>
