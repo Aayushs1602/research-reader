@@ -158,6 +158,24 @@ export async function getLocalDocumentBlob(docId: string): Promise<Blob | null> 
 }
 
 /**
+ * Cache binary PDF blob in browser IndexedDB (used for offline & cloud persistence cache)
+ */
+export async function saveCachedPdfBlob(docId: string, blob: Blob, name: string): Promise<void> {
+  const db = await openLocalDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('pdf_files', 'readwrite');
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error || new Error('Failed to cache PDF blob'));
+    tx.objectStore('pdf_files').put({
+      id: docId,
+      blob,
+      name,
+      updated_at: new Date().toISOString(),
+    });
+  });
+}
+
+/**
  * Delete a local document and all associated files, annotations, notes, and chunks
  */
 export async function deleteLocalDocument(docId: string): Promise<void> {

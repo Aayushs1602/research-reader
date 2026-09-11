@@ -143,6 +143,21 @@ export async function uploadDocument(file: File): Promise<DocumentMeta> {
   return res.json();
 }
 
+export async function reuploadDocumentFile(id: string, file: File): Promise<DocumentMeta> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await fetch(`${API_BASE}/api/documents/${id}/reupload`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to re-upload document file' }));
+    throw new Error(err.detail || 'Failed to re-upload document file');
+  }
+  return res.json();
+}
+
 export async function getDocument(id: string): Promise<DocumentMeta> {
   const res = await fetch(`${API_BASE}/api/documents/${id}`, {
     headers: getAuthHeaders(),

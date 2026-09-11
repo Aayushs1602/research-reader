@@ -21,12 +21,14 @@ import {
   deleteAnnotation,
   getDocumentNotes,
   updateDocumentNotes,
+  reuploadDocumentFile,
   getStoredAISettings,
 } from './api/client';
 import {
   getLocalDocuments,
   saveLocalDocument,
   getLocalDocumentBlob,
+  saveCachedPdfBlob,
   deleteLocalDocument,
   updateLocalProgress,
   getLocalAnnotations,
@@ -48,7 +50,7 @@ import { PdfViewer } from './components/PdfViewer/PdfViewer';
 import { SearchBar } from './components/PdfViewer/SearchBar';
 import { SidebarTabs, type SidebarTab } from './components/Sidebar/SidebarTabs';
 import { DocumentLibraryModal } from './components/DocumentLibraryModal';
-import { BookOpen, UploadCloud, Loader2 } from 'lucide-react';
+import { BookOpen, UploadCloud, Loader2, AlertCircle } from 'lucide-react';
 
 export function App() {
   const { user, isGuest, isLoading: authLoading } = useAuth();
@@ -61,6 +63,9 @@ export function App() {
   const [currentDocId, setCurrentDocId] = useState<string | null>(null);
   const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
   const [loadingDocs, setLoadingDocs] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+  const [isReuploading, setIsReuploading] = useState(false);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -133,6 +138,8 @@ export function App() {
   useEffect(() => {
     if (!currentDocId || (!user && !isGuest)) {
       setPdfBlobUrl(null);
+      setPdfLoading(false);
+      setPdfError(null);
       return;
     }
 
@@ -140,21 +147,38 @@ export function App() {
     let createdUrl: string | null = null;
 
     async function loadPdfBlob() {
+      setPdfLoading(true);
+      setPdfError(null);
       try {
-        const blob = user
-          ? await fetchDocumentFileBlob(currentDocId!)
-          : await getLocalDocumentBlob(currentDocId!);
+        // 1. Try local browser IndexedDB cache first (instant, survives server redeploys/restarts!)
+        let blob = await getLocalDocumentBlob(currentDocId!);
+
+        // 2. If not in local cache, fetch from backend if user
+        if (!blob && user) {
+          blob = await fetchDocumentFileBlob(currentDocId!);
+          // Cache in IndexedDB for subsequent loads
+          if (blob) {
+            await saveCachedPdfBlob(currentDocId!, blob, currentDoc?.original_name || 'document.pdf');
+          }
+        }
 
         if (isCancelled) return;
         if (!blob) {
-          console.warn('PDF blob not found for document:', currentDocId);
-          return;
+          throw new Error('PDF file not found on server or locally');
         }
 
         createdUrl = URL.createObjectURL(blob);
         setPdfBlobUrl(createdUrl);
-      } catch (err) {
+        setPdfError(null);
+      } catch (err: any) {
+        if (isCancelled) return;
         console.error('Error fetching PDF file blob:', err);
+        setPdfBlobUrl(null);
+        setPdfError(err?.message || 'Failed to load PDF file');
+      } finally {
+        if (!isCancelled) {
+          setPdfLoading(false);
+        }
       }
     }
 
@@ -166,7 +190,7 @@ export function App() {
         URL.revokeObjectURL(createdUrl);
       }
     };
-  }, [currentDocId, user, isGuest]);
+  }, [currentDocId, user, isGuest, currentDoc?.original_name]);
 
   // When active document changes, fetch its annotations and notes
   useEffect(() => {
@@ -421,6 +445,8 @@ export function App() {
   const handleUploadDocument = async (file: File) => {
     if (user) {
       const newDoc = await uploadDocument(file);
+      // Immediately cache file blob in browser IndexedDB
+      await saveCachedPdfBlob(newDoc.id, file, file.name).catch(() => {});
       setDocuments((prev) => [newDoc, ...prev]);
       setCurrentDocId(newDoc.id);
       setCurrentPage(1);
@@ -476,6 +502,35 @@ export function App() {
     }
   };
 
+  // Re-upload PDF file for existing document (e.g. when cloud host restarted temporary disk)
+  const handleReuploadCurrentDoc = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !currentDocId) return;
+
+    setIsReuploading(true);
+    try {
+      if (user) {
+        const updated = await reuploadDocumentFile(currentDocId, file);
+        setDocuments((prev) =>
+          prev.map((d) => (d.id === currentDocId ? { ...d, page_count: updated.page_count, file_size: updated.file_size } : d))
+        );
+      }
+      // Cache in IndexedDB immediately
+      await saveCachedPdfBlob(currentDocId, file, file.name);
+
+      // Reload blob url
+      const newUrl = URL.createObjectURL(file);
+      setPdfBlobUrl(newUrl);
+      setPdfError(null);
+    } catch (err: any) {
+      console.error('Failed to re-upload document:', err);
+      alert(`Failed to re-upload PDF: ${err?.message || err}`);
+    } finally {
+      setIsReuploading(false);
+      e.target.value = '';
+    }
+  };
+
   if (authLoading) {
     return (
       <div className="h-screen w-screen flex flex-col items-center justify-center gap-3 bg-gray-50 dark:bg-gray-950 text-indigo-600">
@@ -511,10 +566,53 @@ export function App() {
 
       {/* Main Reading Canvas & Split Sidebar */}
       <div className="flex-1 flex overflow-hidden relative">
-        {loadingDocs ? (
+        {loadingDocs || pdfLoading ? (
           <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-400">
             <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
-            <span className="text-xs font-medium">Loading your documents...</span>
+            <span className="text-xs font-medium">
+              {loadingDocs ? 'Loading your documents...' : 'Loading document PDF...'}
+            </span>
+          </div>
+        ) : pdfError && currentDoc ? (
+          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-gray-500">
+            <div className="w-14 h-14 rounded-2xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 flex items-center justify-center text-amber-600 dark:text-amber-400 mb-3 shadow-sm">
+              <AlertCircle className="w-7 h-7" />
+            </div>
+            <h3 className="text-base font-bold text-gray-800 dark:text-gray-100">
+              PDF File Missing on Server
+            </h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 max-w-md mt-1 mb-4 leading-relaxed">
+              The file for <span className="font-semibold text-gray-700 dark:text-gray-200">"{currentDoc.original_name}"</span> was not found on the server (cloud host restarted its temporary disk).
+              <br className="my-1" />
+              Re-upload this PDF file below to restore it — all your existing notes, highlights, and reading progress are safely preserved!
+            </p>
+            <div className="flex items-center gap-3">
+              <input
+                type="file"
+                id="reupload-file-input"
+                accept="application/pdf"
+                className="hidden"
+                onChange={handleReuploadCurrentDoc}
+              />
+              <button
+                onClick={() => document.getElementById('reupload-file-input')?.click()}
+                disabled={isReuploading}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-2 shadow-md transition disabled:opacity-50"
+              >
+                {isReuploading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <UploadCloud className="w-4 h-4" />
+                )}
+                <span>{isReuploading ? 'Re-uploading...' : 'Re-upload PDF File'}</span>
+              </button>
+              <button
+                onClick={() => setLibraryOpen(true)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 border border-gray-200 dark:border-gray-700 transition"
+              >
+                Choose from Library
+              </button>
+            </div>
           </div>
         ) : pdfBlobUrl ? (
           <>

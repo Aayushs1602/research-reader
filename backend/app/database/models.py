@@ -1,11 +1,17 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, Float, Text, DateTime, ForeignKey, Boolean
+from sqlalchemy import Column, String, Integer, Float, Text, DateTime, ForeignKey, Boolean, LargeBinary
 from sqlalchemy.orm import relationship
 from app.database.session import Base
 
 def generate_uuid():
     return str(uuid.uuid4())
+
+class DocumentFile(Base):
+    __tablename__ = "document_files"
+
+    document_id = Column(String, ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True)
+    file_data = Column(LargeBinary, nullable=False)
 
 class User(Base):
     __tablename__ = "users"

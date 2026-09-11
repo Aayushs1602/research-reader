@@ -4,13 +4,13 @@ import uuid
 import re
 from typing import List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 import pypdf
 
 from app.database.session import get_db
-from app.database.models import Document, DocumentNote, User, DocumentChunk
+from app.database.models import Document, DocumentNote, User, DocumentChunk, DocumentFile
 from app.schemas.schemas import (
     DocumentResponse,
     DocumentProgressUpdate,
@@ -43,19 +43,22 @@ async def upload_document(
     stored_filename = f"{file_id}.pdf"
     file_path = STORAGE_DIR / stored_filename
 
-    # Save file to disk
+    # Read binary bytes
+    file_bytes = await file.read()
+    file_size = len(file_bytes)
+
+    # Save file to disk cache
     try:
         with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
-
-    file_size = os.path.getsize(file_path)
+            buffer.write(file_bytes)
+    except Exception:
+        pass
 
     # Read page count using pypdf
     page_count = 1
     try:
-        reader = pypdf.PdfReader(str(file_path))
+        import io
+        reader = pypdf.PdfReader(io.BytesIO(file_bytes))
         page_count = len(reader.pages)
     except Exception:
         page_count = 1
@@ -72,6 +75,13 @@ async def upload_document(
         progress_percent=round((1 / max(1, page_count)) * 100, 1),
     )
     db.add(doc)
+
+    # Store binary PDF in database so ephemeral host restarts (Render, etc.) never lose files
+    doc_file = DocumentFile(
+        document_id=file_id,
+        file_data=file_bytes,
+    )
+    db.add(doc_file)
 
     # Initialize empty Markdown note for this document
     note = DocumentNote(
@@ -127,14 +137,69 @@ def get_document_file(
         raise HTTPException(status_code=404, detail="Document not found")
 
     file_path = STORAGE_DIR / doc.filename
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="File on disk not found")
+    if file_path.exists():
+        return FileResponse(
+            path=str(file_path),
+            media_type="application/pdf",
+            filename=doc.original_name,
+        )
 
-    return FileResponse(
-        path=str(file_path),
-        media_type="application/pdf",
-        filename=doc.original_name,
-    )
+    # Fallback to database binary if disk was wiped by ephemeral host (Render, etc.)
+    doc_file = db.query(DocumentFile).filter(DocumentFile.document_id == doc_id).first()
+    if doc_file and doc_file.file_data:
+        try:
+            with open(file_path, "wb") as f:
+                f.write(doc_file.file_data)
+        except Exception:
+            pass
+
+        return Response(
+            content=doc_file.file_data,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'inline; filename="{doc.original_name}"'
+            }
+        )
+
+    raise HTTPException(status_code=404, detail="File on disk not found")
+
+@router.post("/{doc_id}/reupload", response_model=DocumentResponse)
+async def reupload_document_file(
+    doc_id: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    doc = db.query(Document).filter(Document.id == doc_id, Document.user_id == current_user.id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    file_bytes = await file.read()
+    file_path = STORAGE_DIR / doc.filename
+    try:
+        with open(file_path, "wb") as f:
+            f.write(file_bytes)
+    except Exception:
+        pass
+
+    doc_file = db.query(DocumentFile).filter(DocumentFile.document_id == doc_id).first()
+    if not doc_file:
+        doc_file = DocumentFile(document_id=doc_id, file_data=file_bytes)
+        db.add(doc_file)
+    else:
+        doc_file.file_data = file_bytes
+
+    doc.file_size = len(file_bytes)
+    try:
+        import io
+        reader = pypdf.PdfReader(io.BytesIO(file_bytes))
+        doc.page_count = max(1, len(reader.pages))
+    except Exception:
+        pass
+
+    db.commit()
+    db.refresh(doc)
+    return serialize_doc(doc, db)
 
 @router.patch("/{doc_id}/progress", response_model=DocumentResponse)
 def update_progress(
