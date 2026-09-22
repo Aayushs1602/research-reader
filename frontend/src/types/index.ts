@@ -57,6 +57,11 @@ export interface SearchMatch {
 
 export type AIProvider = 'ollama' | 'gemini' | 'openai' | 'anthropic' | 'groq' | 'deepseek';
 
+export interface ModelItem {
+  id: string;
+  name: string;
+}
+
 export interface AISettings {
   provider: AIProvider;
   apiKey: string;
