@@ -19,7 +19,7 @@ const AI_SETTINGS_KEY = 'research_reader_ai_settings';
 export const DEFAULT_AI_SETTINGS: AISettings = {
   provider: 'gemini',
   apiKey: '',
-  model: 'gemini-1.5-flash',
+  model: 'gemini-2.5-flash',
   ollamaUrl: 'http://localhost:11434',
 };
 
@@ -27,7 +27,12 @@ export function getStoredAISettings(): AISettings {
   try {
     const raw = localStorage.getItem(AI_SETTINGS_KEY);
     if (!raw) return DEFAULT_AI_SETTINGS;
-    return { ...DEFAULT_AI_SETTINGS, ...JSON.parse(raw) };
+    const parsed = { ...DEFAULT_AI_SETTINGS, ...JSON.parse(raw) };
+    // Auto-migrate legacy/deprecated model names from previous session cache
+    if (parsed.provider === 'gemini' && (parsed.model === 'gemini-1.5-flash' || parsed.model === 'gemini-2.0-flash-exp')) {
+      parsed.model = 'gemini-2.5-flash';
+    }
+    return parsed;
   } catch {
     return DEFAULT_AI_SETTINGS;
   }
@@ -364,6 +369,27 @@ export async function testAIConnection(
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: 'Test connection failed' }));
     throw new Error(err.detail || 'Test connection failed');
+  }
+  return res.json();
+}
+
+export async function fetchProviderModels(
+  provider: string,
+  apiKey?: string,
+  ollamaUrl?: string
+): Promise<{ success: boolean; provider: string; models: { id: string; name: string }[]; message?: string }> {
+  const res = await fetch(`${API_BASE}/api/ai/fetch-models`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({
+      provider,
+      api_key: apiKey,
+      ollama_url: ollamaUrl,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to fetch models' }));
+    throw new Error(err.detail || 'Failed to fetch models');
   }
   return res.json();
 }

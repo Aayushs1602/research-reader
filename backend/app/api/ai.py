@@ -18,13 +18,18 @@ from app.schemas.schemas import (
     AITestConnectionRequest,
     AITestConnectionResponse,
     AIProvidersResponse,
+    AIFetchModelsRequest,
+    AIFetchModelsResponse,
+    ModelInfoItem,
 )
 from app.services.llm_provider import (
     generate_completion,
     get_ollama_models,
     test_llm_connection,
+    fetch_provider_models,
     LLMProviderError,
     DEFAULT_OLLAMA_URL,
+    DEFAULT_GEMINI_MODEL,
 )
 from app.services.chunking import (
     retrieve_relevant_chunks,
@@ -69,11 +74,11 @@ async def get_providers_info(
         environment = "prod"
         # In prod mode, default to cloud provider (API keys path)
         default_provider = server_configured[0] if server_configured else "gemini"
-        default_model = "gemini-1.5-flash" if default_provider == "gemini" else "default"
+        default_model = DEFAULT_GEMINI_MODEL if default_provider == "gemini" else "default"
     else:
         environment = "local"
         default_provider = "ollama" if ollama_available else "gemini"
-        default_model = models[0] if (default_provider == "ollama" and models) else "gemini-1.5-flash"
+        default_model = models[0] if (default_provider == "ollama" and models) else DEFAULT_GEMINI_MODEL
 
     return AIProvidersResponse(
         environment=environment,
@@ -101,6 +106,27 @@ async def test_connection(payload: AITestConnectionRequest):
         message=result.get("message", ""),
         models=result.get("models"),
         key_source=result.get("key_source"),
+    )
+
+@router.post("/fetch-models", response_model=AIFetchModelsResponse)
+async def get_models_for_provider(payload: AIFetchModelsRequest):
+    """Fetches live available models for the specified provider and key."""
+    result = await fetch_provider_models(
+        provider=payload.provider,
+        api_key=payload.api_key,
+        ollama_url=payload.ollama_url or DEFAULT_OLLAMA_URL,
+    )
+    raw_models = result.get("models", [])
+    model_items = [
+        ModelInfoItem(id=m["id"], name=m["name"])
+        for m in raw_models
+        if isinstance(m, dict) and "id" in m
+    ]
+    return AIFetchModelsResponse(
+        success=result.get("success", True),
+        provider=result.get("provider", payload.provider),
+        models=model_items,
+        message=result.get("message"),
     )
 
 @router.post("/deep-dive", response_model=AIDeepDiveResponse)

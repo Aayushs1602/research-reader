@@ -91,6 +91,15 @@ def test_ai_environment_and_api_keys():
     assert gemini_key_data["provider"] == "gemini"
     print(f"[PASS] Gemini API keys path executed successfully: {gemini_key_data['message']}")
 
+    # 5. Test fetch-models endpoint returns modern presets when unauthenticated
+    models_res = client.post("/api/ai/fetch-models", json={"provider": "gemini"})
+    assert models_res.status_code == 200
+    models_data = models_res.json()
+    assert models_data["success"] is True
+    assert len(models_data["models"]) >= 4
+    assert any(m["id"] == "gemini-2.5-flash" for m in models_data["models"])
+    print(f"[PASS] AI Fetch-Models endpoint returned {len(models_data['models'])} models with gemini-2.5-flash present")
+
 
 def test_pdf_upload_and_annotations():
     headers, user_id = get_auth_headers()

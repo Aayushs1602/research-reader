@@ -18,6 +18,7 @@ import {
   getStoredAISettings,
   setStoredAISettings,
   testAIConnection,
+  fetchProviderModels,
   getAIProviders,
   DEFAULT_AI_SETTINGS,
 } from '../../api/client';
@@ -30,22 +31,33 @@ interface AISettingsModalProps {
 
 const CLOUD_MODELS: Record<string, { id: string; name: string }[]> = {
   gemini: [
-    { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash (Fast & Recommended)' },
-    { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash (Next-Gen)' },
-    { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro (Deep Research)' },
+    { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (Fast & Recommended - Default)' },
+    { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro (Deep Research & Reasoning)' },
+    { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash (Next-Gen Production)' },
+    { id: 'gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash-Lite (Ultra-Fast)' },
+    { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash (Legacy)' },
+    { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro (Legacy)' },
   ],
   openai: [
     { id: 'gpt-4o-mini', name: 'GPT-4o Mini (Fast & Cost-Effective)' },
     { id: 'gpt-4o', name: 'GPT-4o (Flagship Multimodal)' },
     { id: 'o3-mini', name: 'o3-mini (STEM & Math Reasoning)' },
+    { id: 'o1', name: 'o1 (Advanced Deep Reasoning)' },
+    { id: 'o1-mini', name: 'o1-mini (Fast Reasoning)' },
   ],
   anthropic: [
-    { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet (State-of-the-Art)' },
-    { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku (Fast & Lean)' },
+    { id: 'claude-3-5-sonnet-latest', name: 'Claude 3.5 Sonnet (Latest / SOTA)' },
+    { id: 'claude-3-5-haiku-latest', name: 'Claude 3.5 Haiku (Fast & Lean)' },
+    { id: 'claude-3-7-sonnet-20250219', name: 'Claude 3.7 Sonnet (Hybrid Reasoning)' },
+    { id: 'claude-sonnet-5', name: 'Claude Sonnet 5 (Frontier)' },
+    { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet (Legacy Oct 2024)' },
+    { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku (Legacy Oct 2024)' },
   ],
   groq: [
-    { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B (Ultra-Fast)' },
+    { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B (Ultra-Fast & Versatile)' },
     { id: 'deepseek-r1-distill-llama-70b', name: 'DeepSeek R1 Distill 70B (Fast Reasoning)' },
+    { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B Instant (Instant Response)' },
+    { id: 'mixtral-8x7b-32768', name: 'Mixtral 8x7B (Large Context)' },
   ],
   deepseek: [
     { id: 'deepseek-chat', name: 'DeepSeek-V3 (Chat & Academic QA)' },
@@ -66,6 +78,9 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({
   const [ollamaStatus, setOllamaStatus] = useState<'idle' | 'connected' | 'error'>('idle');
   const [testingConnection, setTestingConnection] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [liveModels, setLiveModels] = useState<Record<string, { id: string; name: string }[]>>({});
+  const [fetchingModels, setFetchingModels] = useState(false);
+  const [customModelMode, setCustomModelMode] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -99,6 +114,28 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({
     }
   };
 
+  const handleFetchModels = async (provider = settings.provider, apiKey = settings.apiKey) => {
+    setFetchingModels(true);
+    try {
+      const res = await fetchProviderModels(provider, apiKey || undefined, settings.ollamaUrl);
+      if (res.success && res.models && res.models.length > 0) {
+        setLiveModels((prev) => ({
+          ...prev,
+          [provider]: res.models,
+        }));
+        // Auto-select first model if current is invalid
+        const hasCurrent = res.models.some((m) => m.id === settings.model);
+        if (!hasCurrent && !customModelMode) {
+          setSettings((prev) => ({ ...prev, model: res.models[0].id }));
+        }
+      }
+    } catch (e: any) {
+      console.warn('Failed to fetch live models:', e);
+    } finally {
+      setFetchingModels(false);
+    }
+  };
+
   if (!isOpen) return null;
 
   const isLocal = settings.provider === 'ollama';
@@ -114,8 +151,29 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({
         settings.ollamaUrl
       );
       setTestResult({ success: res.success, message: res.message });
-      if (res.success && res.models && res.models.length > 0) {
-        setOllamaModels(res.models);
+      if (res.models && res.models.length > 0) {
+        if (settings.provider === 'ollama') {
+          setOllamaModels(res.models);
+        }
+        const mappedModels = res.models.map((m: string) => ({ id: m, name: m }));
+        setLiveModels((prev) => ({
+          ...prev,
+          [settings.provider]: mappedModels,
+        }));
+        // Auto-select recommended model if current was rejected or unsupported
+        const currentValid = res.models.includes(settings.model);
+        if (!currentValid && !customModelMode) {
+          const firstGood =
+            res.models.find(
+              (m: string) =>
+                m.includes('2.5-flash') ||
+                m.includes('2.0-flash') ||
+                m.includes('flash') ||
+                m.includes('4o-mini') ||
+                m.includes('sonnet')
+            ) || res.models[0];
+          setSettings((prev) => ({ ...prev, model: firstGood }));
+        }
       }
     } catch (e: any) {
       setTestResult({ success: false, message: e?.message || 'Connection test failed' });
@@ -212,7 +270,7 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({
                   setSettings((prev) => ({
                     ...prev,
                     provider: prev.provider === 'ollama' ? 'gemini' : prev.provider,
-                    model: prev.provider === 'ollama' ? 'gemini-1.5-flash' : prev.model,
+                    model: prev.provider === 'ollama' ? 'gemini-2.5-flash' : prev.model,
                   }));
                   setTestResult(null);
                 }}
@@ -460,18 +518,82 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({
 
               {/* Model selection */}
               <div>
-                <label className="text-[11px] font-medium text-gray-500 block mb-1">Target Model</label>
-                <select
-                  value={settings.model}
-                  onChange={(e) => setSettings({ ...settings, model: e.target.value })}
-                  className="w-full text-xs p-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
-                >
-                  {(CLOUD_MODELS[settings.provider] || []).map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-[11px] font-medium text-gray-500">Target Model</label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleFetchModels()}
+                      disabled={fetchingModels || (!settings.apiKey && !providersInfo?.server_configured_providers?.includes(settings.provider))}
+                      className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 disabled:opacity-40"
+                      title="Fetch live models authorized for your API key directly from the provider"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${fetchingModels ? 'animate-spin' : ''}`} />
+                      <span>{fetchingModels ? 'Fetching...' : 'Fetch Live Models'}</span>
+                    </button>
+                    <span className="text-gray-300 dark:text-gray-700">•</span>
+                    <button
+                      type="button"
+                      onClick={() => setCustomModelMode(!customModelMode)}
+                      className="text-[10px] text-gray-500 hover:text-gray-800 dark:hover:text-gray-300 underline"
+                    >
+                      {customModelMode ? 'Use Presets' : 'Custom Model ID'}
+                    </button>
+                  </div>
+                </div>
+
+                {customModelMode ? (
+                  <div className="space-y-1">
+                    <input
+                      type="text"
+                      value={settings.model}
+                      onChange={(e) => setSettings({ ...settings, model: e.target.value.trim() })}
+                      placeholder={`e.g. ${CLOUD_MODELS[settings.provider]?.[0]?.id || 'custom-model-name'}`}
+                      className="w-full text-xs p-2 rounded-lg border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-mono focus:ring-1 focus:ring-indigo-500"
+                    />
+                    <p className="text-[10px] text-gray-400">
+                      Enter any custom, preview, or fine-tuned model ID supported by your account.
+                    </p>
+                  </div>
+                ) : (
+                  <select
+                    value={settings.model}
+                    onChange={(e) => {
+                      if (e.target.value === '__custom__') {
+                        setCustomModelMode(true);
+                      } else {
+                        setSettings({ ...settings, model: e.target.value });
+                      }
+                    }}
+                    className="w-full text-xs p-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+                  >
+                    {liveModels[settings.provider] && liveModels[settings.provider].length > 0 ? (
+                      <>
+                        <optgroup label="✨ Live Models Authorized for Your Key">
+                          {liveModels[settings.provider].map((m) => (
+                            <option key={`live-${m.id}`} value={m.id}>
+                              {m.name}
+                            </option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="Standard Presets">
+                          {(CLOUD_MODELS[settings.provider] || []).map((m) => (
+                            <option key={`preset-${m.id}`} value={m.id}>
+                              {m.name}
+                            </option>
+                          ))}
+                        </optgroup>
+                      </>
+                    ) : (
+                      (CLOUD_MODELS[settings.provider] || []).map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name}
+                        </option>
+                      ))
+                    )}
+                    <option value="__custom__">➕ Enter Custom Model ID...</option>
+                  </select>
+                )}
               </div>
             </div>
           )}

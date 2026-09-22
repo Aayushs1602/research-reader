@@ -175,7 +175,22 @@ class AIProvidersResponse(BaseModel):
     ollama_models: List[str] = []
     supported_cloud_providers: List[str] = ["gemini", "openai", "anthropic", "groq", "deepseek"]
     default_provider: str = "gemini"
-    default_model: str = "gemini-1.5-flash"
+    default_model: str = "gemini-2.5-flash"
     server_configured_providers: List[str] = []
     show_ai_reasons: bool = False
+
+class AIFetchModelsRequest(BaseModel):
+    provider: str
+    api_key: Optional[str] = None
+    ollama_url: Optional[str] = None
+
+class ModelInfoItem(BaseModel):
+    id: str
+    name: str
+
+class AIFetchModelsResponse(BaseModel):
+    success: bool
+    provider: str
+    models: List[ModelInfoItem] = []
+    message: Optional[str] = None
 
